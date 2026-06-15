@@ -1,0 +1,22 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "live: integration tests that hit the real Splunk MCP Server; skipped unless SPLUNK_MCP_URL + SPLUNK_TOKEN are set",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py38"
+extend-exclude = ["build", "stage", "dist", "node_modules", ".venv", "temp-package"]
+
+[tool.ruff.lint]
+# Keep the gate practical for a hackathon submission: real errors, not style noise.
+select = ["E", "F", "W"]
+ignore = [
+    "E501",  # line length handled by line-length, don't fail CI on long strings
+    "E741",  # ambiguous var names (l, etc.) are fine here
+]
+
+[tool.coverage.run]
+source = ["ucc-app/bin"]

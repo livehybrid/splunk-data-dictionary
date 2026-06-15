@@ -1,0 +1,42 @@
+{
+  "name": "splunk-data-dictionary",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Data Dictionary Splunk app — catalog of indexes/sourcetypes with governance metadata, exposed to agents as Splunk MCP tools",
+  "scripts": {
+    "ucc:build": "ucc-gen build --source ucc-app -o build && node scripts/patch-build.js",
+    "webpack": "webpack --config webpack.config.js",
+    "build": "npm run ucc:build && npm run webpack",
+    "typecheck": "tsc --noEmit -p jsconfig.json || true",
+    "lint": "eslint \"src/**/*.{js,jsx}\" || true",
+    "package": "node scripts/package.js",
+    "licenses": "node scripts/generate-licenses.mjs",
+    "test:integration": "playwright test --config playwright.integration.config.ts"
+  },
+  "dependencies": {
+    "@splunk/react-icons": "^5.0.0",
+    "@splunk/react-page": "^8.3.1",
+    "@splunk/react-ui": "^5.0.0",
+    "@splunk/splunk-utils": "^3.2.0",
+    "@splunk/themes": "^1.0.0",
+    "prop-types": "^15.8.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "styled-components": "^5.3.11"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.23.0",
+    "@babel/preset-env": "^7.23.0",
+    "@babel/preset-react": "^7.22.0",
+    "@playwright/test": "^1.60.0",
+    "@splunk/webpack-configs": "^7.0.0",
+    "ajv": "^8.20.0",
+    "babel-loader": "^9.1.3",
+    "copy-webpack-plugin": "^11.0.0",
+    "esbuild": "^0.28.0",
+    "eslint": "^8.50.0",
+    "typescript": "^5.3.0",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4"
+  }
+}

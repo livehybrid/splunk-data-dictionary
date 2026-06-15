@@ -1,0 +1,23 @@
+services:
+  splunk:
+    image: splunk/splunk:10.0
+    container_name: data_dictionary_splunk
+    hostname: splunk
+    environment:
+      SPLUNK_START_ARGS: --accept-license
+      SPLUNK_PASSWORD: Changeme1!
+      SPLUNK_HEC_TOKEN: ""
+    ports:
+      # Splunk Web and management ports are published on ephemeral host ports;
+      # use `make port` / `make mgmt-port` to resolve them.
+      - "8000"
+      - "8089"
+    volumes:
+      # Mount the built app (stage/) live so `npm run build` on the host updates
+      # the running container.
+      - ../stage:/opt/splunk/etc/apps/data_dictionary
+    healthcheck:
+      test: ["CMD", "curl", "-fsk", "https://localhost:8089/services/server/info", "-u", "admin:Changeme1!"]
+      interval: 10s
+      timeout: 5s
+      retries: 30

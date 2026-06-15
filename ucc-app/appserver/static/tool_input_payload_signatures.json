@@ -1,0 +1,195 @@
+[
+  {
+    "tool_id": "splunk_mcp_app:data_dictionary:data_dictionary_index_metadata",
+    "name": "data_dictionary_index_metadata",
+    "title": "data_dictionary_index_metadata",
+    "description": "Look up data GOVERNANCE and OWNERSHIP for a specific, named Splunk index. Use this to answer questions like: 'who owns this index?', 'who do I need to get sign-off / approval from to give a user access to (or onboard data into) this index?', 'who is the data owner / security owner / service owner / escalation contact for this index?', 'is this index PII or sensitive, and what is its data classification?'. Given an index name it returns every sourcetype in that index with its data owner, security owner, service owner, escalation contacts, PII status, data category and export classification — the authoritative governance/ownership record for that index, merged from index-level and sourcetype-level metadata in the Data Dictionary. Use this when the user names a specific index; use data_dictionary_query to search across indexes by keyword or topic.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "string",
+          "description": "Name of the Splunk index whose owners, access sign-off/approval contacts, PII status and data classification you want. URL-encode special characters.",
+          "pattern": "^[^/\\s]{1,200}$",
+          "validation_message": "Index name is required, must not contain slashes or whitespace, and is limited to 200 characters"
+        }
+      },
+      "required": [
+        "index"
+      ]
+    },
+    "_meta": {
+      "tags": [
+        "data_dictionary",
+        "governance",
+        "data_ownership",
+        "data_owner",
+        "access_request",
+        "sign_off",
+        "approval",
+        "onboarding",
+        "rbac",
+        "pii",
+        "data_classification",
+        "security_owner",
+        "escalation_contact",
+        "compliance",
+        "data_steward",
+        "index",
+        "metadata"
+      ],
+      "examples": [
+        {
+          "name": "Who do I get access sign-off from for an index",
+          "description": "Find the data owner and approval / escalation contacts before granting a user access to an index",
+          "arguments": {
+            "index": "payments"
+          },
+          "expected_use": "Answer 'who do I need sign-off from to add a user to this index?' from the index's data owner, security owner and escalation contacts"
+        },
+        {
+          "name": "Is this index PII, and who owns it",
+          "description": "Return ownership and PII/classification for every sourcetype in an index",
+          "arguments": {
+            "index": "main"
+          },
+          "expected_use": "Answer 'is index X PII?', 'what is its classification?' and 'who is responsible for it?'"
+        }
+      ],
+      "execution": {
+        "type": "spl",
+        "template": "| inputlookup data_dictionary_catalog | search index=$index$ | eval _key=\"index_sourcetype:\".index.\":\".sourcetype, index_key=\"index:\".index, sourcetype_key=\"sourcetype:\".sourcetype | lookup data_dictionary_metadata _key OUTPUT data_owner data_category pii_status export_classification service_owner security_owner escalation_contacts | lookup data_dictionary_metadata _key AS index_key OUTPUT data_owner AS _o_data_owner data_category AS _o_data_category pii_status AS _o_pii_status export_classification AS _o_export_classification service_owner AS _o_service_owner security_owner AS _o_security_owner escalation_contacts AS _o_escalation_contacts | lookup data_dictionary_metadata _key AS sourcetype_key OUTPUT data_owner AS _s_data_owner data_category AS _s_data_category pii_status AS _s_pii_status export_classification AS _s_export_classification service_owner AS _s_service_owner security_owner AS _s_security_owner escalation_contacts AS _s_escalation_contacts | eval data_owner=coalesce(data_owner,_o_data_owner,_s_data_owner), data_category=coalesce(data_category,_o_data_category,_s_data_category), pii_status=coalesce(pii_status,_o_pii_status,_s_pii_status), export_classification=coalesce(export_classification,_o_export_classification,_s_export_classification), service_owner=coalesce(service_owner,_o_service_owner,_s_service_owner), security_owner=coalesce(security_owner,_o_security_owner,_s_security_owner), escalation_contacts=coalesce(escalation_contacts,_o_escalation_contacts,_s_escalation_contacts) | fields index sourcetype totalCount firstTime lastTime recentTime _key data_owner data_category pii_status export_classification service_owner security_owner escalation_contacts",
+        "row_limiter": false,
+        "time_range": false
+      },
+      "external_app_id": "Data Dictionary",
+      "required_app": "data_dictionary"
+    }
+  },
+  {
+    "tool_id": "splunk_mcp_app:data_dictionary:data_dictionary_query",
+    "name": "data_dictionary_query",
+    "title": "data_dictionary_query",
+    "description": "Search the Data Dictionary across ALL Splunk indexes and sourcetypes to find data and its GOVERNANCE / OWNERSHIP by keyword or topic. Use this when the exact index name is not known, or to match a team, product or data domain — for example: 'who owns the customer / payment / cultivar data?', 'I need to give a user access to the X indexes, who do I get sign-off / approval from?', 'which indexes or sourcetypes are PII?', 'what data is owned by team X or classified Restricted?'. The 'q' term is matched (case-insensitive) across the index name, the sourcetype, AND every governance field — data owner, security owner, service owner, escalation contacts, PII status, data category and export classification — so it finds the owners and sign-off contacts even when you only know the topic. Returns the matching catalog rows with their owners, approval/escalation contacts, PII status and classification. Optional exact index/sourcetype filters; limit (1-500, default 100). For a single known index, prefer data_dictionary_index_metadata.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "q": {
+          "type": "string",
+          "description": "Keyword or topic to search. Matched (case-insensitive substring) across index name, sourcetype, AND every governance field — data owner, security owner, service owner, escalation contacts, PII status, data category, export classification. Use it to find who owns or signs off for data on a topic (e.g. 'cultivar', 'customer', a team name). Leave blank to list everything.",
+          "pattern": "^[\\s\\S]{0,2000}$",
+          "validation_message": "Search text is optional and limited to 2000 characters",
+          "default": "\"\""
+        },
+        "index": {
+          "type": "string",
+          "description": "Substring match on catalog index column.",
+          "pattern": "^[^/\\s]{0,200}$",
+          "validation_message": "Index filter must not contain slashes or whitespace",
+          "default": "\"\""
+        },
+        "sourcetype": {
+          "type": "string",
+          "description": "Substring match on catalog sourcetype column.",
+          "pattern": "^[\\s\\S]{0,500}$",
+          "validation_message": "Sourcetype filter is limited to 500 characters",
+          "default": "\"\""
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Max rows to return (1-500, default 100).",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 50
+        }
+      },
+      "required": []
+    },
+    "_meta": {
+      "tags": [
+        "data_dictionary",
+        "governance",
+        "data_ownership",
+        "data_owner",
+        "access_request",
+        "sign_off",
+        "approval",
+        "find_owner",
+        "who_owns",
+        "pii",
+        "data_classification",
+        "security_owner",
+        "escalation_contact",
+        "compliance",
+        "search",
+        "discovery",
+        "sourcetype",
+        "index",
+        "catalog"
+      ],
+      "examples": [
+        {
+          "name": "Who owns / signs off for data on a topic",
+          "description": "Find the indexes and sourcetypes related to a keyword and who to get access sign-off from",
+          "arguments": {
+            "q": "customer",
+            "limit": 50
+          },
+          "expected_use": "Answer 'I need to give a user access to the customer indexes — who do I get sign-off from?' from the matching rows' owners and approval contacts"
+        },
+        {
+          "name": "Find all PII data and its owners",
+          "description": "List sourcetypes flagged PII across the estate with their owners and classification",
+          "arguments": {
+            "q": "PII",
+            "limit": 100
+          },
+          "expected_use": "Answer 'which data is PII and who is responsible for it?'"
+        }
+      ],
+      "execution": {
+        "type": "spl",
+        "template": "| inputlookup data_dictionary_catalog | eval _key=\"index_sourcetype:\".index.\":\".sourcetype | lookup data_dictionary_metadata _key OUTPUT data_owner data_category pii_status export_classification service_owner security_owner escalation_contacts | eval _blob=lower(index.\" \".sourcetype.\" \".coalesce(data_owner,\"\").\" \".coalesce(data_category,\"\").\" \".coalesce(pii_status,\"\").\" \".coalesce(export_classification,\"\").\" \".coalesce(service_owner,\"\").\" \".coalesce(security_owner,\"\").\" \".coalesce(escalation_contacts,\"\")) | where like(_blob, \"%\".lower($q$).\"%\") AND like(lower(index), \"%\".lower($index$).\"%\") AND like(lower(sourcetype), \"%\".lower($sourcetype$).\"%\") | fields - _blob | head $limit$ | fields index sourcetype totalCount firstTime lastTime recentTime _key data_owner data_category pii_status export_classification service_owner security_owner escalation_contacts",
+        "row_limiter": false,
+        "time_range": false
+      },
+      "external_app_id": "Data Dictionary",
+      "required_app": "data_dictionary"
+    }
+  },
+  {
+    "tool_id": "splunk_mcp_app:data_dictionary:data_dictionary_ping",
+    "name": "data_dictionary_ping",
+    "title": "data_dictionary_ping",
+    "description": "Lightweight health check for the Data Dictionary app. Returns { ok: true, app: data_dictionary, catalog_rows: N } when the catalog lookup is reachable.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    },
+    "_meta": {
+      "tags": [
+        "data_dictionary",
+        "health",
+        "ping",
+        "connectivity"
+      ],
+      "examples": [
+        {
+          "name": "Verify the dictionary is reachable",
+          "description": "Confirm the catalog lookup is present and queryable",
+          "arguments": {},
+          "expected_use": "Troubleshoot MCP or UI connectivity before calling the other tools"
+        }
+      ],
+      "execution": {
+        "type": "spl",
+        "template": "| inputlookup data_dictionary_catalog | stats count AS catalog_rows | eval ok=\"true\", app=\"data_dictionary\" | fields ok app catalog_rows",
+        "row_limiter": false,
+        "time_range": false
+      },
+      "external_app_id": "Data Dictionary",
+      "required_app": "data_dictionary"
+    }
+  }
+]

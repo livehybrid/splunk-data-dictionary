@@ -1,0 +1,55 @@
+{
+    "meta": {
+        "name": "data_dictionary",
+        "restRoot": "data_dictionary",
+        "displayName": "Data Dictionary",
+        "version": "0.1.0",
+        "schemaVersion": "0.0.10"
+    },
+    "pages": {
+        "configuration": {
+            "title": "Data Dictionary",
+            "description": "Catalog Splunk indexes, sourcetypes and sources with governance metadata.",
+            "tabs": [
+                {
+                    "name": "logging",
+                    "title": "Logging",
+                    "entity": [
+                        {
+                            "field": "loglevel",
+                            "label": "Log level",
+                            "type": "singleSelect",
+                            "options": {
+                                "disableSearch": true,
+                                "autoCompleteFields": [
+                                    {
+                                        "value": "DEBUG",
+                                        "label": "DEBUG"
+                                    },
+                                    {
+                                        "value": "INFO",
+                                        "label": "INFO"
+                                    },
+                                    {
+                                        "value": "WARNING",
+                                        "label": "WARNING"
+                                    },
+                                    {
+                                        "value": "ERROR",
+                                        "label": "ERROR"
+                                    },
+                                    {
+                                        "value": "CRITICAL",
+                                        "label": "CRITICAL"
+                                    }
+                                ]
+                            },
+                            "defaultValue": "INFO",
+                            "required": true
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+}

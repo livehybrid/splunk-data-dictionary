@@ -1,0 +1,34 @@
+{
+    "info": {
+        "author": [
+            {
+                "company": null,
+                "email": null,
+                "name": "LiveHybrid"
+            }
+        ],
+        "description": "Catalog Splunk indexes, sourcetypes, and sources with metadata (Data Owner, PII, Export Classification).",
+        "id": {
+            "group": null,
+            "name": "data_dictionary",
+            "version": "0.0.0+1e55463"
+        },
+        "license": {
+            "name": "Apache License 2.0",
+            "text": "./LICENSES/Apache-2.0.txt",
+            "uri": null
+        },
+        "title": "Data Dictionary"
+    },
+    "inputGroups": null,
+    "schemaVersion": "2.0.0",
+    "supportedDeployments": [
+        "_standalone",
+        "_distributed",
+        "_search_head_clustering"
+    ],
+    "targetWorkloads": [
+        "_search_heads",
+        "_indexers"
+    ]
+}

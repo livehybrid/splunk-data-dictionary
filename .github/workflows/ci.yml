@@ -1,0 +1,180 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  actions: read
+
+jobs:
+  python:
+    name: Python lint + unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install tools
+        run: pip install --upgrade pip ruff pytest pytest-cov
+      - name: Ruff lint
+        run: ruff check tests ucc-app/bin
+      - name: Pytest (tool-signature invariants; live MCP tests auto-skip)
+        run: pytest tests
+
+  node-build:
+    name: Node typecheck + UCC/Webpack build + package
+    runs-on: ubuntu-latest
+    outputs:
+      tarball: ${{ steps.pkg.outputs.tarball }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install ucc-gen
+        run: pip install splunk-add-on-ucc-framework==6.4.0
+      - name: npm ci
+        run: npm ci || npm install --legacy-peer-deps
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Derive app version from release tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: echo "APP_VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_ENV"
+      - name: Build (ucc-gen + webpack -> stage/)
+        run: npm run build
+      - name: Verify build output
+        run: |
+          test -f stage/appserver/static/pages/home.js
+          test -f stage/appserver/static/pages/mcp_tools.js
+          test -f stage/bin/build_catalog.py
+          grep -q build_catalog stage/default/restmap.conf
+      - name: Package tarball
+        id: pkg
+        run: |
+          node scripts/package.js
+          TARBALL=$(ls dist/*.tar.gz | head -1)
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+      - name: Upload package (consumed by the reusable AppInspect workflows as 'dist')
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*.tar.gz
+
+  # AppInspect via the shared, reusable livehybrid pipeline (the same one used by
+  # TrackMe and the other livehybrid Splunk apps), which wraps Splunk's OFFICIAL
+  # GitHub Actions: splunk/appinspect-cli-action and splunk/appinspect-api-action.
+  # Both download the 'dist' artifact published by node-build.
+  quality-appinspect:
+    name: AppInspect CLI (official action, via reusable pipeline)
+    needs: node-build
+    uses: livehybrid/deploy-splunk-app-action/.github/workflows/appinspect-cli.yml@main
+    with:
+      # 'cloud' = the Splunk Cloud vetting tag group (the app passes it cleanly).
+      # 'future' is intentionally omitted: it flags the python.required=python3
+      # 10.2-deprecation notice (a future_failure, not a current failure).
+      tags: "cloud"
+    secrets:
+      token: ${{ secrets.GITHUB_TOKEN }}
+
+  quality-appinspect-api:
+    name: AppInspect API (official action, via reusable pipeline)
+    needs: quality-appinspect
+    uses: livehybrid/deploy-splunk-app-action/.github/workflows/appinspect-api.yml@main
+    secrets:
+      splunkbase_username: ${{ secrets.SPLUNKBASE_USERNAME }}
+      splunkbase_password: ${{ secrets.SPLUNKBASE_PASSWORD }}
+
+  integration:
+    name: Integration (live Splunk in Docker)
+    runs-on: ubuntu-latest
+    needs: node-build
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install ucc-gen
+        run: pip install splunk-add-on-ucc-framework==6.4.0
+      - name: npm install
+        run: npm ci || npm install --legacy-peer-deps
+      - name: Build app (ucc-gen + webpack -> stage/)
+        run: npm run build
+      - name: Start Splunk + install app (Docker)
+        env:
+          SPLUNK_IMAGE: splunk/splunk:10.0
+          SPLUNK_PASSWORD: Changeme1!
+          WEB_PORT: '8000'
+          MGMT_PORT: '8089'
+        run: bash scripts/splunk-docker.sh up
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Run live integration tests
+        env:
+          SPLUNK_WEB_URL: http://127.0.0.1:8000
+          SPLUNK_USER: admin
+          SPLUNK_PASSWORD: Changeme1!
+        run: npm run test:integration
+      - name: Splunk logs (on failure)
+        if: failure()
+        run: bash scripts/splunk-docker.sh logs 200
+      - name: Tear down Splunk
+        if: always()
+        run: bash scripts/splunk-docker.sh down
+      - name: Upload integration Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-playwright-report
+          path: playwright-report/
+
+  licenses:
+    name: Third-party licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      - name: npm install
+        run: npm ci || npm install --legacy-peer-deps
+      - name: Regenerate third-party license attribution
+        run: npm run licenses
+      - name: Flag if committed licenses/ is out of date (non-blocking)
+        run: |
+          if ! git diff --quiet -- licenses/; then
+            echo "::warning::licenses/ is out of date — run 'npm run licenses' and commit the result."
+            git diff --stat -- licenses/ || true
+          else
+            echo "licenses/ is up to date."
+          fi
+      - name: Upload licenses
+        uses: actions/upload-artifact@v4
+        with:
+          name: third-party-licenses
+          path: licenses/
+
+  # On a v*.*.* tag: after the app is built (node-build uploads the `dist`
+  # artifact, versioned from the tag) and validated by AppInspect + the live
+  # integration tests, publish a GitHub Release with the tarball attached, via
+  # the same reusable livehybrid pipeline the other apps use.
+  publish:
+    name: Publish release (tarball -> GitHub Release, via reusable pipeline)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [node-build, quality-appinspect-api, integration]
+    permissions:
+      contents: write
+    uses: livehybrid/deploy-splunk-app-action/.github/workflows/publish.yml@main
