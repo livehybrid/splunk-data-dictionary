@@ -12,6 +12,7 @@ module.exports = {
     mode: 'production',
     entry: {
         home: path.join(__dirname, 'src/main/webapp/pages/home/index.jsx'),
+        fields: path.join(__dirname, 'src/main/webapp/pages/fields/index.jsx'),
         mcp_tools: path.join(__dirname, 'src/main/webapp/pages/mcp_tools/index.jsx'),
     },
     output: {

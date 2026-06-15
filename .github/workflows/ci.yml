@@ -56,9 +56,13 @@ jobs:
       - name: Verify build output
         run: |
           test -f stage/appserver/static/pages/home.js
+          test -f stage/appserver/static/pages/fields.js
           test -f stage/appserver/static/pages/mcp_tools.js
           test -f stage/bin/build_catalog.py
+          test -f stage/bin/permissions.py
           grep -q build_catalog stage/default/restmap.conf
+          grep -q 'data_dictionary/permissions' stage/default/restmap.conf
+          grep -q 'capability::edit_data_dictionary' stage/default/authorize.conf
       - name: Package tarball
         id: pkg
         run: |
@@ -107,8 +111,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - name: Install ucc-gen
-        run: pip install splunk-add-on-ucc-framework==6.4.0
+      - name: Install ucc-gen + pytest
+        run: pip install splunk-add-on-ucc-framework==6.4.0 pytest
       - name: npm install
         run: npm ci || npm install --legacy-peer-deps
       - name: Build app (ucc-gen + webpack -> stage/)
@@ -120,11 +124,29 @@ jobs:
           WEB_PORT: '8000'
           MGMT_PORT: '8089'
         run: bash scripts/splunk-docker.sh up
+      # The Splunk MCP Server is third-party (not committed); when an operator
+      # supplies vendor/Splunk_MCP_Server.tgz this installs + configures it and
+      # registers the tools. In CI it is absent, so this is a no-op and the
+      # MCP-protocol tests below skip — the REST/RBAC tests still run.
+      - name: Install + configure MCP Server (if provided)
+        env:
+          SPLUNK_PASSWORD: Changeme1!
+          MGMT_PORT: '8089'
+        run: bash scripts/integration-mcp.sh
+      - name: Live REST + RBAC + MCP pytest
+        env:
+          SPLUNK_MGMT_URL: https://127.0.0.1:8089
+          SPLUNK_MCP_URL: https://127.0.0.1:8089/services/mcp
+          MCP_TOKEN_FILE: .tmp/integration-mcp-token
+          SPLUNK_USER: admin
+          SPLUNK_PASSWORD: Changeme1!
+        run: python -m pytest tests/test_mcp_live.py -v
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
       - name: Run live integration tests
         env:
           SPLUNK_WEB_URL: http://127.0.0.1:8000
+          SPLUNK_MGMT_URL: https://127.0.0.1:8089
           SPLUNK_USER: admin
           SPLUNK_PASSWORD: Changeme1!
         run: npm run test:integration

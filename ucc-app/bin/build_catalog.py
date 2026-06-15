@@ -17,6 +17,8 @@ common = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(common)
 json_response = common.json_response
 get_session_key = common.get_session_key
+get_system_key = common.get_system_key
+forbidden_if_cannot_edit = common.forbidden_if_cannot_edit
 
 APP = "data_dictionary"
 SAVED_SEARCH = "Data Dictionary - Build Catalog"
@@ -36,12 +38,18 @@ class BuildCatalogHandler(PersistentServerConnectionApplication):
             if method not in ("POST", "GET"):
                 return json_response({"error": "Method not allowed"}, status=405)
 
+            denied = forbidden_if_cannot_edit(session_key)
+            if denied is not None:
+                return denied
+
             path = "/servicesNS/nobody/{}/saved/searches/{}/dispatch".format(
                 APP, quote(SAVED_SEARCH, safe="")
             )
+            # Capability check passed; dispatch with system auth so a capability-holder
+            # who is not a saved-search/lookup-ACL admin can still rebuild the catalog.
             response, content = rest.simpleRequest(
                 path,
-                sessionKey=session_key,
+                sessionKey=get_system_key(req),
                 method="POST",
                 postargs={"trigger_actions": "0", "output_mode": "json"},
                 raiseAllErrors=False,

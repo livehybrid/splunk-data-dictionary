@@ -4,41 +4,44 @@ import Link from '@splunk/react-ui/Link';
 import Paragraph from '@splunk/react-ui/Paragraph';
 import Table from '@splunk/react-ui/Table';
 
-// The MCP tools — what an agent calls. These EXECUTE AS SPL (not by calling the
-// REST API): the Splunk MCP Server runs each tool's SPL template against the
-// catalog lookup overlaid with governance metadata.
+// The MCP tools - what an agent calls. `ping` runs an SPL template; `query` and
+// `index_metadata` are API tools: the Splunk MCP Server proxies a GET to this
+// app's own REST handlers, which return a flat row array of catalog + merged
+// governance metadata (standard + custom fields).
 const MCP_TOOLS = [
     {
         name: 'data_dictionary_index_metadata',
         answers:
-            'Governance & ownership for a named index — who owns it, who to get access sign-off from, security/service owner, escalation contacts, PII status, classification, per sourcetype.',
-        spl: '| inputlookup data_dictionary_catalog (filtered to the index) | lookup data_dictionary_metadata (row / index / sourcetype overlays)',
+            'Governance & ownership for a named index - who owns it, who to get access sign-off from, security/service owner, escalation contacts, PII status, classification, per sourcetype.',
+        execution: 'API → GET /services/data_dictionary/dictionary/index/<index>?flat=1',
     },
     {
         name: 'data_dictionary_query',
         answers:
             'Search across ALL indexes/sourcetypes by keyword to find data and its owners/PII/classification (e.g. "who owns the cultivar data?").',
-        spl: '| inputlookup data_dictionary_catalog | lookup data_dictionary_metadata | where keyword matches index, sourcetype, or any governance field',
+        execution: 'API → GET /services/data_dictionary/dictionary/query?flat=1 (q, index, sourcetype, limit)',
     },
     {
         name: 'data_dictionary_ping',
-        answers: 'Health check — confirms the catalog lookup is reachable and returns its row count.',
-        spl: '| inputlookup data_dictionary_catalog | stats count',
+        answers: 'Health check - confirms the catalog lookup is reachable and returns its row count.',
+        execution: 'SPL → | inputlookup data_dictionary_catalog | stats count',
     },
 ];
 
-// The REST API — persistent handlers the in-app React UI calls. These are HTTP
+// The REST API - persistent handlers the in-app React UI calls. These are HTTP
 // endpoints (restmap.conf); they are NOT how the MCP tools execute.
 const REST_ENDPOINTS = [
     { method: 'GET', path: '/data_dictionary/ping', summary: 'Health check for the app REST stack.' },
     { method: 'GET', path: '/data_dictionary/discovery/catalog', summary: 'Catalog rows (index, sourcetype) from the lookup.' },
     { method: 'GET', path: '/data_dictionary/discovery/indexes', summary: 'Indexes via Splunk REST.' },
     { method: 'GET', path: '/data_dictionary/discovery/sourcetypes', summary: 'Sourcetypes via Splunk REST.' },
-    { method: 'GET / POST / DELETE', path: '/data_dictionary/metadata[/<key>]', summary: 'List / get / upsert / delete governance metadata in the KV store.' },
-    { method: 'GET', path: '/data_dictionary/dictionary/index/<index>', summary: 'Catalog + merged governance metadata for one index.' },
-    { method: 'GET', path: '/data_dictionary/dictionary/query', summary: 'Search the catalog with merged metadata (q, index, sourcetype, limit, offset).' },
+    { method: 'GET / POST / DELETE', path: '/data_dictionary/metadata[/<key>]', summary: 'List / get / upsert / delete governance metadata in the KV store. Writes need edit_data_dictionary.' },
+    { method: 'GET / POST / DELETE', path: '/data_dictionary/field-defs[/<key>]', summary: 'Standard + custom field definitions. Writes need edit_data_dictionary.' },
+    { method: 'GET', path: '/data_dictionary/dictionary/index/<index>', summary: 'Catalog + merged governance metadata for one index (flat=1 for the MCP api tool).' },
+    { method: 'GET', path: '/data_dictionary/dictionary/query', summary: 'Search the catalog with merged metadata (q, index, sourcetype, limit, offset; flat=1 for the MCP api tool).' },
     { method: 'GET', path: '/data_dictionary/options', summary: 'Option lists for the edit-form dropdowns (macro / lookup).' },
-    { method: 'POST', path: '/data_dictionary/build-catalog', summary: 'Dispatch the "Data Dictionary - Build Catalog" saved search.' },
+    { method: 'GET', path: '/data_dictionary/permissions', summary: 'Current user: username, roles, can_edit (drives the UI edit controls).' },
+    { method: 'POST', path: '/data_dictionary/build-catalog', summary: 'Dispatch the "Data Dictionary - Build Catalog" saved search. Needs edit_data_dictionary.' },
 ];
 
 const styles = {
@@ -83,27 +86,35 @@ export default function McpToolsDocs() {
                     How the MCP tools work
                 </Heading>
                 <Paragraph style={styles.compactParagraph}>
-                    The app ships tool definitions in{' '}
-                    <InlineCode>appserver/static/tool_input_payload_signatures.json</InlineCode>. The Splunk
-                    MCP Server <strong>automatically imports</strong> them into its{' '}
-                    <InlineCode>mcp_tools</InlineCode> KV Store collection — there is no manual registration.
+                    The app ships its tool definitions in{' '}
+                    <InlineCode>appserver/static/tool_input_payload_signatures.json</InlineCode> (the single
+                    source of truth), declared restmap-side in <InlineCode>default/tools.conf</InlineCode>.
+                    On <strong>Splunk Cloud</strong> they register automatically on install (a native
+                    synced-apps registrar reads <InlineCode>tools.conf</InlineCode>). On{' '}
+                    <strong>Splunk Enterprise</strong> the app self-registers via{' '}
+                    <InlineCode>bin/autoregister.py</InlineCode> - fired by an{' '}
+                    <InlineCode>app.conf</InlineCode> reload trigger on install - which upserts the tools into
+                    the Splunk MCP Server&apos;s <InlineCode>mcp_tools</InlineCode> KV Store collection.
+                    (<InlineCode>deploy/register_mcp_tools.py</InlineCode> remains as a manual one-shot.)
                 </Paragraph>
                 <ul style={styles.bulletList}>
                     <li>
-                        Each tool <strong>executes as SPL</strong> against the Data Dictionary&apos;s catalog
-                        lookup (<InlineCode>data_dictionary_catalog</InlineCode>) overlaid with governance
-                        metadata from the <InlineCode>data_dictionary_metadata</InlineCode> KV lookup —
-                        pure <InlineCode>| inputlookup</InlineCode> / <InlineCode>| lookup</InlineCode>, with
+                        <InlineCode>data_dictionary_ping</InlineCode> runs a small <strong>SPL</strong> template
+                        against the catalog lookup - pure <InlineCode>| inputlookup</InlineCode> with
                         no <InlineCode>| rest</InlineCode>, so it is safe inside the MCP search sandbox.
                     </li>
                     <li>
-                        The agent sees each tool&apos;s name, description and input schema, calls it by name,
-                        and the MCP Server runs the SPL and returns the rows. The tools are
-                        read-only.
+                        <InlineCode>data_dictionary_query</InlineCode> and{' '}
+                        <InlineCode>data_dictionary_index_metadata</InlineCode> are <strong>API</strong> tools:
+                        the MCP Server proxies a <InlineCode>GET</InlineCode> to this app&apos;s REST handlers
+                        (the <InlineCode>/dictionary/*</InlineCode> endpoints below) with{' '}
+                        <InlineCode>flat=1</InlineCode>, which return a flat row array of catalog + merged
+                        governance metadata - so <strong>standard and custom fields</strong> flow through.
                     </li>
                     <li>
-                        Tool identity and the SPL template live in the signature JSON, <em>not</em> in the
-                        REST API below — the two are independent.
+                        The agent sees each tool&apos;s name, description and input schema, calls it by name,
+                        and gets the rows back. All three tools are <strong>read-only</strong>; editing
+                        metadata requires the <InlineCode>edit_data_dictionary</InlineCode> capability.
                     </li>
                 </ul>
             </div>
@@ -112,13 +123,13 @@ export default function McpToolsDocs() {
                 Registered MCP tools
             </Heading>
             <Paragraph style={{ marginBottom: 10 }}>
-                What each tool answers and the SPL it runs:
+                What each tool answers and how it executes:
             </Paragraph>
             <Table stripeRows>
                 <Table.Head>
                     <Table.HeadCell>MCP tool</Table.HeadCell>
                     <Table.HeadCell>What it answers</Table.HeadCell>
-                    <Table.HeadCell>Execution (SPL)</Table.HeadCell>
+                    <Table.HeadCell>Execution</Table.HeadCell>
                 </Table.Head>
                 <Table.Body>
                     {MCP_TOOLS.map((t) => (
@@ -128,7 +139,7 @@ export default function McpToolsDocs() {
                             </Table.Cell>
                             <Table.Cell>{t.answers}</Table.Cell>
                             <Table.Cell>
-                                <InlineCode>{t.spl}</InlineCode>
+                                <InlineCode>{t.execution}</InlineCode>
                             </Table.Cell>
                         </Table.Row>
                     ))}
@@ -139,9 +150,11 @@ export default function McpToolsDocs() {
                 REST API (used by the in-app UI)
             </Heading>
             <Paragraph style={{ marginBottom: 10, maxWidth: 900 }}>
-                The app also exposes persistent REST handlers (<InlineCode>restmap.conf</InlineCode>) that the
-                React UI calls. These are HTTP endpoints — <strong>not</strong> how the MCP tools execute —
-                but they are available for direct integration. Paths are app-scoped, e.g.{' '}
+                The app exposes persistent REST handlers (<InlineCode>restmap.conf</InlineCode>) that the
+                React UI calls - and that the <InlineCode>query</InlineCode> /{' '}
+                <InlineCode>index_metadata</InlineCode> MCP tools proxy to (the{' '}
+                <InlineCode>/dictionary/*</InlineCode> routes). Writes (metadata, field-defs, build-catalog)
+                require the <InlineCode>edit_data_dictionary</InlineCode> capability. Paths are app-scoped, e.g.{' '}
                 <InlineCode>/servicesNS/nobody/data_dictionary/data_dictionary/ping</InlineCode>.
             </Paragraph>
             <Table stripeRows>
@@ -169,7 +182,7 @@ export default function McpToolsDocs() {
                 </Heading>
                 <Paragraph style={{ ...styles.compactParagraph, marginBottom: 0 }}>
                     For the REST API, do not infer the URL from the <InlineCode>restmap.conf</InlineCode> stanza
-                    name — the HTTP URL is the stanza&apos;s <InlineCode>match =</InlineCode> path. Example:{' '}
+                    name - the HTTP URL is the stanza&apos;s <InlineCode>match =</InlineCode> path. Example:{' '}
                     <InlineCode>[script:dictionary_query]</InlineCode> with{' '}
                     <InlineCode>match = /data_dictionary/dictionary/query</InlineCode> is called on{' '}
                     <InlineCode>/data_dictionary/dictionary/query</InlineCode>, not{' '}

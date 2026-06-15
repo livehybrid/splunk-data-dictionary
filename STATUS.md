@@ -1,4 +1,4 @@
-# STATUS — Splunk Data Dictionary
+# STATUS - Splunk Data Dictionary
 
 _Honest state of the app for the Splunk Agentic Ops Hackathon 2026 (Platform &
 Developer Experience + "Best Use of Splunk MCP Server")._
@@ -14,29 +14,29 @@ catalog.
 
 ## What works (verified)
 
-- ✅ **Catalog UI** — React page in Splunk: index/sourcetype table with governance
+- ✅ **Catalog UI** - React page in Splunk: index/sourcetype table with governance
   columns, per-row view/edit icon actions, value-suggesting dropdowns, PII Status
   as Yes/No, and an "Apply to" scope (this sourcetype / all in index / only un-set).
   Deployed and verified live (`docs/screenshots/`).
-- ✅ **Governance metadata** — KV-store backed, merged row → index → sourcetype, with
+- ✅ **Governance metadata** - KV-store backed, merged row → index → sourcetype, with
   a kvstore lookup (`data_dictionary_metadata`) so it reads in pure SPL.
-- ✅ **MCP tools live** — `data_dictionary_query`, `data_dictionary_index_metadata`,
+- ✅ **MCP tools live** - `data_dictionary_query`, `data_dictionary_index_metadata`,
   `data_dictionary_ping` registered on the Splunk MCP Server and answering. They
   execute as **SPL** over the catalog + governance lookups (no `| rest`,
   sandbox-safe). Descriptions are governance-worded so agents select them for
   ownership/sign-off/PII questions. Verified live, e.g.
   `data_dictionary_query("cultivar")` → the index's owners + escalation contacts.
-- ✅ **REST API** — persistent handlers (`ucc-app/bin/`) power the UI and are callable
+- ✅ **REST API** - persistent handlers (`ucc-app/bin/`) power the UI and are callable
   directly: ping, discovery, metadata CRUD, dictionary/index, dictionary/query,
   options, build-catalog.
-- ✅ **Build + package** — `ucc-gen` (official UCC) + Webpack → `stage/` → tarball.
-- ✅ **AppInspect precert** — 0 errors, 0 failures (1 informational future_failure:
+- ✅ **Build + package** - `ucc-gen` (official UCC) + Webpack → `stage/` → tarball.
+- ✅ **AppInspect precert** - 0 errors, 0 failures (1 informational future_failure:
   the `python.required = python3` 10.2 deprecation notice).
-- ✅ **CI/CD** — `ci.yml` reuses the shared `livehybrid/deploy-splunk-app-action`
+- ✅ **CI/CD** - `ci.yml` reuses the shared `livehybrid/deploy-splunk-app-action`
   AppInspect workflows (wrapping Splunk's official actions), plus a live-Splunk
   Docker integration job, third-party license attribution, and a tag-driven release
   that publishes the tarball to a GitHub Release. See the README.
-- ✅ **Tests** — `pytest` tool-signature invariants (live MCP tests auto-skip without
+- ✅ **Tests** - `pytest` tool-signature invariants (live MCP tests auto-skip without
   creds) + Playwright integration tests against a real Splunk in Docker.
 
 ## What's deployed vs in the repo
@@ -50,7 +50,7 @@ catalog.
 1. **Modernise `python.required`** to clear the AppInspect `future` deprecation, so
    the `future` tag can be added to the AppInspect CLI matrix.
 2. **Splunk version test matrix** (`splunk/addonfactory-test-matrix-action`).
-3. **Seeded-catalog integration coverage** — drive the metadata edit + "Apply to
+3. **Seeded-catalog integration coverage** - drive the metadata edit + "Apply to
    index" scope in the live-Splunk Playwright suite.
 4. Short demo video.
 
@@ -59,4 +59,4 @@ catalog.
 This app previously bundled an experimental "AI Concierge" (an in-app/CLI LLM agent
 + governance scorecard). It was removed to keep the app a focused, honestly-scoped
 **catalog + MCP governance tools** deliverable; the agentic value now lives where it
-belongs — in the MCP tools any agent (Splunk AI Assistant, Claude, …) can call.
+belongs - in the MCP tools any agent (Splunk AI Assistant, Claude, …) can call.

@@ -1,7 +1,7 @@
-# Data Dictionary — MCP Tools
+# Data Dictionary - MCP Tools
 
 The Data Dictionary app publishes **three tools** on the Splunk MCP Server so any
-MCP client — **Splunk's own AI Assistant**, Claude, or any other agent — can query
+MCP client - **Splunk's own AI Assistant**, Claude, or any other agent - can query
 the governance catalog with live grounding.
 
 This doc covers what each tool does, its input schema, and **real, captured
@@ -23,8 +23,52 @@ Accept: application/json, text/event-stream
  "params":{"name":"data_dictionary_ping","arguments":{}}}
 ```
 
-Search-backed tools return a `structuredContent` block shaped
+Tools return a `structuredContent` block shaped
 `{results: [...], total_rows, truncated}`.
+
+## Execution model
+
+`data_dictionary_ping` runs as a small **SPL** template. `data_dictionary_query`
+and `data_dictionary_index_metadata` run as **API** tools: the MCP server proxies a
+`GET` to this app's own REST handlers
+(`/services/data_dictionary/dictionary/query` and `…/dictionary/index/<index>`)
+with `flat=1`. The handler returns a **bare JSON array** - one object per
+(index, sourcetype) row, with the merged governance metadata flattened onto it -
+which the MCP server turns into the `results` rows. This avoids the search sandbox
+(no `| rest`) and means **any governance field flows through automatically**,
+including admin-defined custom fields (see *Governance metadata* below).
+
+### How the tools get registered
+
+The tool definitions are the single source of truth in
+`appserver/static/tool_input_payload_signatures.json`, declared restmap-side in
+`default/tools.conf` (every tool needs an `endpoint_name`). How they reach the
+Splunk MCP Server's registry depends on the platform:
+
+- **Splunk Cloud** registers them **automatically on install** - a native
+  synced-apps registrar reads the app's `tools.conf` and registers its MCP tools.
+  Nothing app-side is required.
+- **Splunk Enterprise** has no native registrar (and older MCP servers have no
+  `tool_registration` endpoint), so the app self-registers via
+  `bin/autoregister.py`: an instance-aware REST handler, fired by the `app.conf`
+  `[triggers] reload.tools = http_post /data_dictionary/autoregister` on
+  install/enable, that upserts the tools straight into the MCP Server's
+  `mcp_tools` + `mcp_tools_enabled` KV collections. It detects the platform via
+  `server/info` `instance_type` and no-ops on Cloud. Idempotent; also callable
+  directly (`POST /services/data_dictionary/autoregister`).
+
+`deploy/register_mcp_tools.py` remains as a manual one-shot equivalent for ad-hoc
+registration.
+
+## Governance metadata
+
+Each result row carries the governance fields merged with **row → index →
+sourcetype** precedence. The standard fields are data owner, data category, PII
+status, export classification, service owner, security owner and escalation
+contacts; admins can add their own **custom fields** (Fields page in the UI), and
+those are returned by the query/index tools alongside the standard ones. Editing
+metadata requires the `edit_data_dictionary` capability (reads are open) - see the
+app README / RBAC notes.
 
 ---
 
@@ -64,9 +108,9 @@ metadata. All arguments are optional.
 | `q` | string | `""` | Case-insensitive substring across index, sourcetype, and all metadata fields. Blank = list everything. |
 | `index` | string | `""` | Substring match on the index column. |
 | `sourcetype` | string | `""` | Substring match on the sourcetype column. |
-| `limit` | integer | `50` | Max rows (1–500). |
+| `limit` | integer | `50` | Max rows (1-500). |
 
-**Example — free-text search**
+**Example - free-text search**
 
 ```jsonc
 // request arguments
@@ -170,5 +214,5 @@ bash scripts/splunk-docker.sh down
 
 | Layer | Test | Network |
 |-------|------|---------|
-| Registered tool templates (no `\| rest`, flat schema, SPL-only, app/ucc-app in sync) | `tests/test_tool_signatures.py` | none |
+| Tool registration invariants (ping SPL + no `\| rest`; query/index API → app REST + `flat=1`; flat schema; ids aligned with live) | `tests/test_tool_signatures.py` | none |
 | App installs + REST handlers + React bundles render in real Splunk | `tests/integration/` (Playwright) | live Splunk in Docker (CI) |

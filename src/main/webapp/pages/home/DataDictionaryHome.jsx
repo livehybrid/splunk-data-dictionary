@@ -16,40 +16,32 @@ import Magnifier from '@splunk/react-icons/Magnifier';
 import Pencil from '@splunk/react-icons/Pencil';
 import {
     getDiscoveryCatalog,
+    getFieldDefs,
     getMetadata,
     getMetadataList,
     getOptions,
+    getPermissions,
     ping,
     triggerCatalogBuild,
     upsertMetadata,
 } from './api';
 
-// Field definitions for the metadata edit/view form.
-// - optionsSource: pull suggestions from a Splunk macro or lookup (free-text still allowed).
-// - options: a fixed list rendered as a strict dropdown (e.g. a Yes/No boolean).
-const METADATA_FIELDS = [
-    { id: 'data_owner', label: 'Data Owner', optionsSource: { type: 'macro', name: 'data_owner_list' } },
-    { id: 'data_category', label: 'Data Category' },
-    { id: 'pii_status', label: 'PII Status', options: ['Yes', 'No'] },
-    { id: 'export_classification', label: 'Export Classification', optionsSource: { type: 'lookup', name: 'export_classification_options' } },
-    { id: 'service_owner', label: 'Service Owner', optionsSource: { type: 'macro', name: 'data_owner_list' } },
-    { id: 'security_owner', label: 'Security Owner', optionsSource: { type: 'macro', name: 'data_owner_list' } },
-    { id: 'escalation_contacts', label: 'Escalation Contacts', optionsSource: { type: 'macro', name: 'operation_contacts_list' } },
-];
-
-const TABLE_COLUMN_OPTIONS = [
-    { id: 'index', label: 'Index' },
-    { id: 'sourcetype', label: 'Sourcetype' },
-    { id: 'data_owner', label: 'Data Owner' },
-    { id: 'data_category', label: 'Data Category' },
-    { id: 'pii_status', label: 'PII Status' },
-    { id: 'export_classification', label: 'Export Classification' },
-    { id: 'service_owner', label: 'Service Owner' },
-    { id: 'security_owner', label: 'Security Owner' },
-    { id: 'escalation_contacts', label: 'Escalation Contacts' },
-];
-
 const DEFAULT_VISIBLE_COLUMNS = ['index', 'sourcetype', 'data_owner', 'pii_status', 'export_classification'];
+
+// Map an admin field definition to the internal shape the editor renders:
+// - boolean  -> a strict Yes/No dropdown (keeps the -/Yes/No tri-state)
+// - select   -> a customisable ComboBox seeded from a macro/lookup + explicit
+//               options + values already used across the estate
+function defToField(def) {
+    const f = { id: def._key, label: def.label || def._key, type: def.type || 'select' };
+    if (def.type === 'boolean') {
+        f.options = ['Yes', 'No'];
+    } else {
+        if (def.options_source) f.optionsSource = def.options_source;
+        if (Array.isArray(def.options) && def.options.length) f.suggestions = def.options;
+    }
+    return f;
+}
 
 function rowKey(index, sourcetype) {
     return `index_sourcetype:${index || ''}:${sourcetype || ''}`;
@@ -65,16 +57,16 @@ function parseRowKey(key) {
     return { index: rest.slice(0, i), sourcetype: rest.slice(i + 1) };
 }
 
-function hasMetadata(meta) {
+function hasMetadata(meta, fields) {
     if (!meta) return false;
-    return METADATA_FIELDS.some((f) => meta[f.id] && String(meta[f.id]).trim());
+    return fields.some((f) => meta[f.id] && String(meta[f.id]).trim());
 }
 
-// Strip bookkeeping/_key fields — keep only the governance fields the user edits.
+// Strip bookkeeping/_key fields - keep only the governance fields the user edits.
 // (upsertMetadata sets _key per target, and the backend stamps updated_by/at.)
-function metadataPayload(doc) {
+function metadataPayload(doc, fields) {
     const out = {};
-    METADATA_FIELDS.forEach((f) => {
+    fields.forEach((f) => {
         if (doc[f.id] !== undefined) out[f.id] = doc[f.id];
     });
     return out;
@@ -83,9 +75,12 @@ function metadataPayload(doc) {
 export default function DataDictionaryHome() {
     const [connected, setConnected] = useState(null);
     const [error, setError] = useState(null);
+    const [canEdit, setCanEdit] = useState(false);
+    const [username, setUsername] = useState('');
     const [catalog, setCatalog] = useState([]);
     const [catalogMessage, setCatalogMessage] = useState(null);
     const [metadataList, setMetadataList] = useState([]);
+    const [fields, setFields] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedKey, setSelectedKey] = useState(null);
     const [metadataModalMode, setMetadataModalMode] = useState('edit');
@@ -110,19 +105,34 @@ export default function DataDictionaryHome() {
     const editButtonRef = useRef(null);
     const columnButtonRef = useRef(null);
 
+    // Column options = the fixed catalogue columns + one per (visible) field definition.
+    const tableColumnOptions = useMemo(
+        () => [
+            { id: 'index', label: 'Index' },
+            { id: 'sourcetype', label: 'Sourcetype' },
+            ...fields.map((f) => ({ id: f.id, label: f.label })),
+        ],
+        [fields],
+    );
+
     const load = useCallback(async () => {
         setError(null);
         setLoading(true);
         try {
             await ping();
             setConnected(true);
-            const [catalogRes, metaRes] = await Promise.all([
+            const [catalogRes, metaRes, fieldDefs, perms] = await Promise.all([
                 getDiscoveryCatalog(),
                 getMetadataList(),
+                getFieldDefs().catch(() => []),
+                getPermissions().catch(() => ({ can_edit: false })),
             ]);
             setCatalog(catalogRes.catalog || []);
             setCatalogMessage(catalogRes.message || null);
             setMetadataList(metaRes.metadata || []);
+            setFields((fieldDefs || []).filter((d) => !d.hidden).map(defToField));
+            setCanEdit(!!perms.can_edit);
+            setUsername(perms.username || '');
         } catch (e) {
             setConnected(false);
             setError(e instanceof Error ? e.message : String(e));
@@ -142,7 +152,7 @@ export default function DataDictionaryHome() {
             return undefined;
         }
         const sources = [];
-        METADATA_FIELDS.forEach((f) => {
+        fields.forEach((f) => {
             if (f.optionsSource) {
                 const key = `${f.optionsSource.type}:${f.optionsSource.name}`;
                 if (!sources.some((s) => s.key === key)) sources.push({ key, ...f.optionsSource });
@@ -162,7 +172,7 @@ export default function DataDictionaryHome() {
             setOptionsCache(next);
         });
         return () => { cancelled = true; };
-    }, [selectedKey]);
+    }, [selectedKey, fields]);
 
     const metaByKey = useMemo(
         () => Object.fromEntries((metadataList || []).map((m) => [m._key, m])),
@@ -173,15 +183,15 @@ export default function DataDictionaryHome() {
     // Used to suggest existing values in the edit dropdowns (no macro/lookup needed).
     const distinctValuesByField = useMemo(() => {
         const map = {};
-        METADATA_FIELDS.forEach((f) => { map[f.id] = new Set(); });
+        fields.forEach((f) => { map[f.id] = new Set(); });
         (metadataList || []).forEach((doc) => {
-            METADATA_FIELDS.forEach((f) => {
+            fields.forEach((f) => {
                 const v = doc[f.id];
                 if (v != null && String(v).trim()) map[f.id].add(String(v).trim());
             });
         });
         return map;
-    }, [metadataList]);
+    }, [metadataList, fields]);
 
     const catalogRows = useMemo(() => {
         const rows = (catalog || []).map((r) => {
@@ -214,7 +224,7 @@ export default function DataDictionaryHome() {
             );
         }
         if (unprocessedOnly) {
-            out = out.filter((row) => !hasMetadata(metaByKey[row.key]));
+            out = out.filter((row) => !hasMetadata(metaByKey[row.key], fields));
         }
         const order = sortAsc ? 1 : -1;
         out = [...out].sort((a, b) => {
@@ -223,7 +233,7 @@ export default function DataDictionaryHome() {
             return order * String(va).localeCompare(String(vb));
         });
         return out;
-    }, [catalogRows, filterIndex, filterSourcetype, filterText, sortBy, sortAsc, unprocessedOnly, metaByKey]);
+    }, [catalogRows, filterIndex, filterSourcetype, filterText, sortBy, sortAsc, unprocessedOnly, metaByKey, fields]);
 
     const indexOptions = useMemo(() => {
         const set = new Set(catalogRows.map((r) => r.index).filter(Boolean));
@@ -238,9 +248,14 @@ export default function DataDictionaryHome() {
         return Array.from(set).sort();
     }, [catalogRows, filterIndex]);
 
-    // When index filter or options change, clear sourcetype if it's no longer valid
+    // When the index filter changes, clear the sourcetype if it no longer belongs to
+    // the selected index. Guard on a non-empty option list: while the catalog is still
+    // loading (or refreshing) sourcetypeOptions is [], and an empty list must NOT be read
+    // as "the current sourcetype is invalid" - otherwise a sourcetype provided via the URL
+    // (?index=..&sourcetype=..) gets wiped before the catalog arrives. The index Select has
+    // no such effect, which is why it survived load and the sourcetype did not.
     useEffect(() => {
-        if (filterSourcetype && !sourcetypeOptions.includes(filterSourcetype)) {
+        if (filterSourcetype && sourcetypeOptions.length > 0 && !sourcetypeOptions.includes(filterSourcetype)) {
             setFilterSourcetype('');
         }
     }, [filterIndex, sourcetypeOptions, filterSourcetype]);
@@ -253,9 +268,9 @@ export default function DataDictionaryHome() {
     );
     const indexUnsetCount = useMemo(
         () => catalogRows.filter(
-            (r) => r.index === editIndex && (r.key === selectedKey || !hasMetadata(metaByKey[r.key])),
+            (r) => r.index === editIndex && (r.key === selectedKey || !hasMetadata(metaByKey[r.key], fields)),
         ).length,
-        [catalogRows, editIndex, selectedKey, metaByKey],
+        [catalogRows, editIndex, selectedKey, metaByKey, fields],
     );
 
     const openMetadata = useCallback(async (key, mode, event) => {
@@ -300,29 +315,29 @@ export default function DataDictionaryHome() {
     const toggleColumnModalSelection = useCallback((id) => {
         setColumnModalSelections((prev) =>
             prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id].sort((a, b) => {
-                const ai = TABLE_COLUMN_OPTIONS.findIndex((c) => c.id === a);
-                const bi = TABLE_COLUMN_OPTIONS.findIndex((c) => c.id === b);
+                const ai = tableColumnOptions.findIndex((c) => c.id === a);
+                const bi = tableColumnOptions.findIndex((c) => c.id === b);
                 return ai - bi;
             })
         );
-    }, []);
+    }, [tableColumnOptions]);
 
     const handleSave = useCallback(async () => {
         if (!selectedKey) return;
         setSaving(true);
         try {
-            const payload = metadataPayload(editDoc);
+            const payload = metadataPayload(editDoc, fields);
             const { index } = parseRowKey(selectedKey);
             let keys = [selectedKey];
             if (applyScope === 'all') {
                 keys = catalogRows.filter((r) => r.index === index).map((r) => r.key);
             } else if (applyScope === 'unset') {
                 keys = catalogRows
-                    .filter((r) => r.index === index && (r.key === selectedKey || !hasMetadata(metaByKey[r.key])))
+                    .filter((r) => r.index === index && (r.key === selectedKey || !hasMetadata(metaByKey[r.key], fields)))
                     .map((r) => r.key);
             }
             keys = Array.from(new Set(keys));
-            // Sequential writes — kinder to the KV store than a burst of parallel POSTs.
+            // Sequential writes - kinder to the KV store than a burst of parallel POSTs.
             // eslint-disable-next-line no-restricted-syntax
             for (const k of keys) {
                 // eslint-disable-next-line no-await-in-loop
@@ -335,7 +350,7 @@ export default function DataDictionaryHome() {
         } finally {
             setSaving(false);
         }
-    }, [selectedKey, editDoc, applyScope, catalogRows, metaByKey, load, closeEdit]);
+    }, [selectedKey, editDoc, applyScope, catalogRows, metaByKey, fields, load, closeEdit]);
 
     const toggleSort = useCallback((col) => {
         setSortBy((prev) => (prev === col ? prev : col));
@@ -366,7 +381,20 @@ export default function DataDictionaryHome() {
 
     return (
         <div style={{ padding: 24 }}>
-            <Heading level={2} style={{ marginBottom: 8 }}>Data Dictionary</Heading>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+                <Heading level={2}>Data Dictionary</Heading>
+                {connected && username && (
+                    <span style={{ fontSize: 12, color: 'var(--lh-textGray, #6b7785)' }}>
+                        {username} ·{' '}
+                        <span style={{
+                            fontWeight: 600,
+                            color: canEdit ? 'var(--lh-success, #118832)' : 'var(--lh-textGray, #6b7785)',
+                        }}>
+                            {canEdit ? 'Editor' : 'Read-only'}
+                        </span>
+                    </span>
+                )}
+            </div>
             <P style={{ marginBottom: 24 }}>
                 Browse and manage metadata for index and sourcetype pairs. Catalog is built from a lookup populated by the Data Dictionary catalog saved search.
             </P>
@@ -385,18 +413,26 @@ export default function DataDictionaryHome() {
 
             {!loading && connected && (
                 <>
+                    {!canEdit && (
+                        <Message type="info" style={{ marginBottom: 16 }}>
+                            You have read-only access to the Data Dictionary. Ask an administrator
+                            to grant the &quot;edit_data_dictionary&quot; capability to your role to edit metadata.
+                        </Message>
+                    )}
                     <div style={{ marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center' }}>
                         <Button
                             appearance="primary"
                             onClick={load}
                             label="Refresh catalog and metadata"
                         />
-                        <Button
-                            appearance="secondary"
-                            onClick={handleTriggerCatalog}
-                            disabled={triggering}
-                            label={triggering ? 'Running...' : 'Run catalog search'}
-                        />
+                        {canEdit && (
+                            <Button
+                                appearance="secondary"
+                                onClick={handleTriggerCatalog}
+                                disabled={triggering}
+                                label={triggering ? 'Running...' : 'Run catalog search'}
+                            />
+                        )}
                         <Switch
                             selected={unprocessedOnly}
                             onClick={(e, { selected }) => setUnprocessedOnly(!selected)}
@@ -422,6 +458,9 @@ export default function DataDictionaryHome() {
                                         style={{ width: '100%' }}
                                     >
                                         <Select.Option label="All" value="" />
+                                        {filterIndex && !indexOptions.includes(filterIndex) && (
+                                            <Select.Option key={filterIndex} label={filterIndex} value={filterIndex} />
+                                        )}
                                         {indexOptions.map((idx) => (
                                             <Select.Option key={idx} label={idx} value={idx} />
                                         ))}
@@ -435,6 +474,18 @@ export default function DataDictionaryHome() {
                                         style={{ width: '100%' }}
                                     >
                                         <Select.Option label="All" value="" />
+                                        {/* Always render the selected sourcetype as an option
+                                            (e.g. one supplied via ?sourcetype=..) so the Select
+                                            can display it even before the backing catalog row
+                                            has loaded or when it falls outside the current
+                                            index scope. Deduped against the real options. */}
+                                        {filterSourcetype && !sourcetypeOptions.includes(filterSourcetype) && (
+                                            <Select.Option
+                                                key={filterSourcetype}
+                                                label={filterSourcetype}
+                                                value={filterSourcetype}
+                                            />
+                                        )}
                                         {sourcetypeOptions.map((st) => (
                                             <Select.Option key={st} label={st} value={st} />
                                         ))}
@@ -464,7 +515,7 @@ export default function DataDictionaryHome() {
                             <Table stripeRows>
                                 <Table.Head>
                                     {visibleTableColumns.map((colId) => {
-                                        const col = TABLE_COLUMN_OPTIONS.find((c) => c.id === colId);
+                                        const col = tableColumnOptions.find((c) => c.id === colId);
                                         if (!col) return null;
                                         if (colId === 'index' || colId === 'sourcetype') {
                                             return (
@@ -498,7 +549,7 @@ export default function DataDictionaryHome() {
                                                         <Table.Cell key={colId}>
                                                             {colId === 'index' || colId === 'sourcetype'
                                                                 ? row[colId]
-                                                                : (meta?.[colId] ?? '—')}
+                                                                : (meta?.[colId] ?? '-')}
                                                         </Table.Cell>
                                                     ))}
                                                     <Table.Cell>
@@ -511,14 +562,16 @@ export default function DataDictionaryHome() {
                                                                     onClick={(e) => openView(row.key, e)}
                                                                 />
                                                             </Tooltip>
-                                                            <Tooltip content="Edit metadata">
-                                                                <Button
-                                                                    appearance="secondary"
-                                                                    icon={<Pencil />}
-                                                                    aria-label={`Edit metadata for ${row.sourcetype}`}
-                                                                    onClick={(e) => openEdit(row.key, e)}
-                                                                />
-                                                            </Tooltip>
+                                                            {canEdit && (
+                                                                <Tooltip content="Edit metadata">
+                                                                    <Button
+                                                                        appearance="secondary"
+                                                                        icon={<Pencil />}
+                                                                        aria-label={`Edit metadata for ${row.sourcetype}`}
+                                                                        onClick={(e) => openEdit(row.key, e)}
+                                                                    />
+                                                                </Tooltip>
+                                                            )}
                                                         </div>
                                                     </Table.Cell>
                                                 </Table.Row>
@@ -554,7 +607,7 @@ export default function DataDictionaryHome() {
                     onRequestClose={closeEdit}
                 />
                 <Modal.Body style={{ minWidth: 400 }}>
-                    {METADATA_FIELDS.map((f) => {
+                    {fields.map((f) => {
                         const value = editDoc[f.id] ?? '';
                         if (metadataModalMode === 'view') {
                             return (
@@ -564,11 +617,11 @@ export default function DataDictionaryHome() {
                                     style={{ marginBottom: 16 }}
                                     controlsLayout="fill"
                                 >
-                                    <P>{value || '—'}</P>
+                                    <P>{value || '-'}</P>
                                 </ControlGroup>
                             );
                         }
-                        // Fixed-option fields (e.g. PII Status Yes/No) — strict dropdown.
+                        // Fixed-option fields (e.g. PII Status Yes/No) - strict dropdown.
                         if (f.options) {
                             const opts = [...f.options];
                             if (value && !opts.includes(value)) opts.push(value);
@@ -586,7 +639,7 @@ export default function DataDictionaryHome() {
                                         }
                                         style={{ width: '100%' }}
                                     >
-                                        <Select.Option label="—" value="" />
+                                        <Select.Option label="-" value="" />
                                         {opts.map((opt) => (
                                             <Select.Option key={opt} label={opt} value={opt} />
                                         ))}
@@ -594,12 +647,12 @@ export default function DataDictionaryHome() {
                                 </ControlGroup>
                             );
                         }
-                        // Free-text fields with suggestions: macro/lookup options + values
-                        // already used for this field across the estate.
+                        // Free-text fields with suggestions: macro/lookup options, the
+                        // field's own option list, and values already used in the estate.
                         const cacheKey = f.optionsSource && `${f.optionsSource.type}:${f.optionsSource.name}`;
                         const sourceOpts = (cacheKey && optionsCache[cacheKey]) || [];
                         const distinctOpts = Array.from(distinctValuesByField[f.id] || []);
-                        const optionSet = new Set([...sourceOpts, ...distinctOpts]);
+                        const optionSet = new Set([...sourceOpts, ...(f.suggestions || []), ...distinctOpts]);
                         if (value && !optionSet.has(value)) optionSet.add(value);
                         const optionsList = Array.from(optionSet).sort((a, b) => a.localeCompare(b));
                         return (
@@ -689,15 +742,19 @@ export default function DataDictionaryHome() {
                     onRequestClose={closeColumnModal}
                 />
                 <Modal.Body style={{ minWidth: 320 }}>
-                    {TABLE_COLUMN_OPTIONS.map((col) => (
-                        <Switch
-                            key={col.id}
-                            selected={columnModalSelections.includes(col.id)}
-                            onClick={() => toggleColumnModalSelection(col.id)}
-                            style={{ marginBottom: 12, display: 'block' }}
-                        >
-                            {col.label}
-                        </Switch>
+                    {tableColumnOptions.map((col) => (
+                        // Wrap in a block div for vertical stacking; let the Switch keep its
+                        // native inline-flex layout so the checkbox and label stay vertically
+                        // centred with proper spacing (a `display: block` override on the
+                        // Switch itself breaks that flex alignment).
+                        <div key={col.id} style={{ marginBottom: 12 }}>
+                            <Switch
+                                selected={columnModalSelections.includes(col.id)}
+                                onClick={() => toggleColumnModalSelection(col.id)}
+                            >
+                                {col.label}
+                            </Switch>
+                        </div>
                     ))}
                 </Modal.Body>
                 <Modal.Footer>

@@ -12,7 +12,7 @@ const TEMP = path.join(ROOT, 'temp-package', APP_ID);
 const DIST = path.join(ROOT, 'dist');
 
 if (!fs.existsSync(STAGE)) {
-    console.error('[package] stage/ not found — run `npm run build` first.');
+    console.error('[package] stage/ not found - run `npm run build` first.');
     process.exit(1);
 }
 

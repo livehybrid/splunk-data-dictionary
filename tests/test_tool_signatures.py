@@ -2,26 +2,30 @@
 Static validation of the MCP tool registration file
 (`appserver/static/tool_input_payload_signatures.json`).
 
-This is the regression guard for the three bugs that broke the live tools and
-were fixed in round 2 (commit 1ecdd44). It needs **no network** — it parses the
-JSON the Splunk MCP Server registers from and asserts the invariants the server
-enforces at load/exec time:
+No network needed: this parses the JSON the Splunk MCP Server registers from and
+asserts the invariants the server enforces at load/exec time.
 
-  1. No forbidden SPL commands in the execution template. The MCP search sandbox
-     rejects `| rest` (the original "Forbidden command found: rest" failure), so
-     no template may contain it.
-  2. Flat, `$ref`-free input schema (Anthropic/!MCP reject complex/`$ref` schemas).
-  3. `_meta.execution.type == "spl"` with a non-empty template, and SPL tools must
-     NOT define API execution fields (method/endpoint) — the loader rejects those.
-  4. `external_app_id` present (immutable + required by the registration model).
-  5. Optional string args (NOT in `required`) carry a PRE-QUOTED default (`'""'`).
-     The server JSON-quotes string args before `$arg$` substitution; a bare
-     ``"default": ""`` would substitute to an empty/unquoted token and break the
-     SPL (`index=` / `lower()` with nothing), so optional string defaults must be
-     the two-character string `""`.
+History:
+  * Round 2 (commit 1ecdd44) fixed three SPL-template bugs: the `| rest` sandbox
+    rejection, the argument-quoting bug, and SPL tools carrying API fields.
+  * Post-submission the two read tools were migrated SPL -> API execution
+    (they proxy to the app's own REST handlers, which return a flat JSON array
+    that the MCP server turns into result rows). `data_dictionary_ping` stays SPL.
+
+So the current invariants are:
+  - ping            : execution.type == "spl", non-empty template, no `| rest`
+                      (or other sandbox-forbidden command), no API fields.
+  - query / index   : execution.type == "api", GET + an /services/data_dictionary
+                      endpoint, no SPL template, params carry flat=1 so the handler
+                      returns the bare array the API executor expects.
+  - all tools       : flat ($ref-free) input schema; identifiers aligned with the
+                      live registration (tool_id == "data_dictionary:<name>",
+                      external_app_id == required_app == "data_dictionary").
+  - no optional string arg carries the old pre-quoted `'""'` default - that was an
+    SPL-quoting hack; for an API tool it would send a literal `""` query value.
 
 The buildable source (`ucc-app/`) is checked so a rebuild can't silently
-reintroduce the bug.
+reintroduce a regression.
 """
 from __future__ import annotations
 
@@ -35,6 +39,11 @@ SIG_REL = os.path.join("appserver", "static", "tool_input_payload_signatures.jso
 COPIES = {
     "ucc-app": os.path.join(REPO, "ucc-app", SIG_REL),
 }
+
+APP = "data_dictionary"
+EXPECTED_APP_ID = "data_dictionary"
+SPL_TOOLS = {"data_dictionary_ping"}
+API_TOOLS = {"data_dictionary_query", "data_dictionary_index_metadata"}
 
 # SPL commands the MCP search sandbox forbids (the original failure was `rest`).
 FORBIDDEN_SPL_COMMANDS = ["rest", "script", "sendemail", "runshellscript", "delete"]
@@ -68,38 +77,25 @@ def test_signature_files_exist():
 
 def test_expected_dd_tools_present():
     tools = {t["name"] for _, t in _all_tools()}
-    for expected in (
-        "data_dictionary_ping",
-        "data_dictionary_query",
-        "data_dictionary_index_metadata",
-    ):
+    for expected in SPL_TOOLS | API_TOOLS:
         assert expected in tools, f"{expected} not registered"
 
 
-def test_no_forbidden_spl_commands_in_templates():
-    """Regression guard for 'Forbidden command found: rest'."""
+def test_identifiers_aligned_with_live_registration():
+    """tool_id / external_app_id / required_app must match the live KV registration
+    so the file is a faithful, re-runnable registration source."""
     for copy_name, tool in _all_tools():
-        tmpl = tool.get("_meta", {}).get("execution", {}).get("template", "")
-        low = tmpl.lower()
-        for cmd in FORBIDDEN_SPL_COMMANDS:
-            # Match the command as a pipe segment: `| rest ...`.
-            assert f"| {cmd}" not in low and f"|{cmd}" not in low, (
-                f"[{copy_name}] {tool['name']}: template uses forbidden `| {cmd}` "
-                f"(MCP sandbox rejects it)"
-            )
-
-
-def test_execution_is_spl_with_template_and_no_api_fields():
-    for copy_name, tool in _all_tools():
-        execu = tool.get("_meta", {}).get("execution", {})
-        assert execu.get("type") == "spl", f"[{copy_name}] {tool['name']}: execution.type != spl"
-        assert execu.get("template"), f"[{copy_name}] {tool['name']}: empty execution template"
-        # SPL tools must not carry API execution fields — the loader rejects them
-        # ("SPL tools cannot define API execution fields").
-        for api_field in ("method", "endpoint", "url", "path"):
-            assert api_field not in execu, (
-                f"[{copy_name}] {tool['name']}: SPL tool must not define execution.{api_field}"
-            )
+        name = tool["name"]
+        assert tool.get("tool_id") == f"{APP}:{name}", (
+            f"[{copy_name}] {name}: tool_id should be '{APP}:{name}', got {tool.get('tool_id')!r}"
+        )
+        meta = tool.get("_meta", {})
+        assert meta.get("external_app_id") == EXPECTED_APP_ID, (
+            f"[{copy_name}] {name}: external_app_id should be '{EXPECTED_APP_ID}'"
+        )
+        assert meta.get("required_app") == EXPECTED_APP_ID, (
+            f"[{copy_name}] {name}: required_app should be '{EXPECTED_APP_ID}'"
+        )
 
 
 def test_external_app_id_present():
@@ -118,38 +114,93 @@ def test_input_schema_is_flat_no_refs():
         )
 
 
-def test_optional_string_args_have_pre_quoted_defaults():
-    """
-    Regression guard for the quoting bug: the server JSON-quotes string args
-    before `$arg$` substitution, so an optional string arg's DEFAULT must already
-    be a quoted-empty token (`""`) — otherwise the substituted SPL is malformed
-    (e.g. `index=` or `lower()` with nothing).
-    """
+def test_execution_type_matches_expected():
     for copy_name, tool in _all_tools():
-        for field, spec in _string_props_not_required(tool):
-            if "default" not in spec:
-                continue
-            assert spec["default"] == '""', (
-                f"[{copy_name}] {tool['name']}.{field}: optional string default must be "
-                f'the pre-quoted token \'""\' (got {spec["default"]!r})'
+        name = tool["name"]
+        exec_type = tool.get("_meta", {}).get("execution", {}).get("type")
+        if name in SPL_TOOLS:
+            assert exec_type == "spl", f"[{copy_name}] {name}: expected spl execution, got {exec_type!r}"
+        elif name in API_TOOLS:
+            assert exec_type == "api", f"[{copy_name}] {name}: expected api execution, got {exec_type!r}"
+
+
+def test_spl_tools_have_clean_template_and_no_api_fields():
+    for copy_name, tool in _all_tools():
+        if tool["name"] not in SPL_TOOLS:
+            continue
+        execu = tool.get("_meta", {}).get("execution", {})
+        tmpl = execu.get("template", "")
+        assert tmpl, f"[{copy_name}] {tool['name']}: empty execution template"
+        low = tmpl.lower()
+        for cmd in FORBIDDEN_SPL_COMMANDS:
+            assert f"| {cmd}" not in low and f"|{cmd}" not in low, (
+                f"[{copy_name}] {tool['name']}: template uses forbidden `| {cmd}` "
+                f"(MCP sandbox rejects it)"
+            )
+        # SPL tools must not carry API execution fields - the loader rejects them.
+        for api_field in ("method", "endpoint", "url", "path", "params", "body"):
+            assert api_field not in execu, (
+                f"[{copy_name}] {tool['name']}: SPL tool must not define execution.{api_field}"
             )
 
 
-def test_query_template_substitution_well_formed():
-    """
-    The data_dictionary_query template must reference each optional arg via
-    `$arg$` exactly where a quoted string is expected, so the server's JSON
-    quoting lands correctly (no `index=$index$` style un-lowered bare compares).
-    """
+def test_api_tools_proxy_to_app_rest_handlers():
+    """API tools must be a GET to one of this app's dictionary REST endpoints,
+    carry no SPL template, and request flat=1 so the handler returns the bare
+    array the API executor turns into result rows."""
+    for copy_name, tool in _all_tools():
+        if tool["name"] not in API_TOOLS:
+            continue
+        execu = tool.get("_meta", {}).get("execution", {})
+        assert execu.get("method", "").upper() == "GET", (
+            f"[{copy_name}] {tool['name']}: API tool should be GET"
+        )
+        endpoint = execu.get("endpoint", "")
+        assert isinstance(endpoint, str) and endpoint.startswith(f"/services/{APP}/dictionary/"), (
+            f"[{copy_name}] {tool['name']}: endpoint should target /services/{APP}/dictionary/*, "
+            f"got {endpoint!r}"
+        )
+        assert "template" not in execu, (
+            f"[{copy_name}] {tool['name']}: API tool must not define an SPL template"
+        )
+        params = execu.get("params") or {}
+        assert isinstance(params, dict), f"[{copy_name}] {tool['name']}: params must be an object"
+        assert str(params.get("flat")) == "1", (
+            f"[{copy_name}] {tool['name']}: params must request flat=1 for the API executor"
+        )
+
+
+def test_index_metadata_endpoint_has_index_placeholder():
+    for copy_name, tool in _all_tools():
+        if tool["name"] != "data_dictionary_index_metadata":
+            continue
+        endpoint = tool["_meta"]["execution"].get("endpoint", "")
+        assert "$index$" in endpoint, (
+            f"[{copy_name}] data_dictionary_index_metadata: endpoint must template the index "
+            f"as $index$, got {endpoint!r}"
+        )
+
+
+def test_query_params_template_each_optional_arg():
     for copy_name, tool in _all_tools():
         if tool["name"] != "data_dictionary_query":
             continue
-        tmpl = tool["_meta"]["execution"]["template"]
-        # q/index/sourcetype are wrapped in lower(...) so the JSON-quoted value
-        # sits inside a function call, not bare next to `=`.
-        for arg in ("$q$", "$index$", "$sourcetype$"):
-            assert f"lower({arg})" in tmpl, (
-                f"[{copy_name}] data_dictionary_query: expected lower({arg}) in template"
+        params = tool["_meta"]["execution"].get("params") or {}
+        for arg in ("q", "index", "sourcetype", "limit"):
+            assert params.get(arg) == f"${arg}$", (
+                f"[{copy_name}] data_dictionary_query: params[{arg!r}] should be '${arg}$' "
+                f"so the MCP server substitutes/drops it, got {params.get(arg)!r}"
+            )
+
+
+def test_no_legacy_pre_quoted_string_defaults():
+    """The old SPL-quoting hack ('""' defaults) must not survive on API tools - it
+    would send a literal `""` as the query value instead of being dropped."""
+    for copy_name, tool in _all_tools():
+        for field, spec in _string_props_not_required(tool):
+            assert spec.get("default") != '""', (
+                f"[{copy_name}] {tool['name']}.{field}: legacy pre-quoted '\"\"' default must be "
+                f"removed (API tools drop unfilled optional params)"
             )
 
 

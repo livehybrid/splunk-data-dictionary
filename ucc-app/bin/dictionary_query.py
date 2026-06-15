@@ -2,7 +2,6 @@
 import importlib.util
 import json
 import os
-from urllib.parse import parse_qs
 
 from splunk.persistconn.application import PersistentServerConnectionApplication
 
@@ -15,16 +14,7 @@ get_session_key = common.get_session_key
 rest_get = common.rest_get
 kv_base = common.kv_base
 load_catalog_lookup = common.load_catalog_lookup
-
-METADATA_FIELD_IDS = [
-    "data_owner",
-    "data_category",
-    "pii_status",
-    "export_classification",
-    "service_owner",
-    "security_owner",
-    "escalation_contacts",
-]
+query_params = common.query_params
 
 QUERY_LIMIT_DEFAULT = 100
 QUERY_LIMIT_MAX = 500
@@ -63,6 +53,9 @@ def _kv_map(session_key):
     return out, None, 200
 
 
+_BOOKKEEPING = {"_key", "_user", "updated_by", "updated_at"}
+
+
 def _merge_row_metadata(meta_map, index, sourcetype):
     rk = _row_key(index, sourcetype)
     ik = "index:{}".format(index) if index else ""
@@ -70,8 +63,13 @@ def _merge_row_metadata(meta_map, index, sourcetype):
     row_doc = meta_map.get(rk) or {}
     idx_doc = meta_map.get(ik) or {}
     st_doc = meta_map.get(sk) or {}
+    # Merge ALL governance fields present (standard + admin-defined custom), not a
+    # fixed list, so custom fields flow through to agents too.
+    field_ids = set()
+    for d in (row_doc, idx_doc, st_doc):
+        field_ids.update(k for k in d.keys() if k not in _BOOKKEEPING)
     merged = {}
-    for fid in METADATA_FIELD_IDS:
+    for fid in field_ids:
         v = row_doc.get(fid)
         if v is None or (isinstance(v, str) and not v.strip()):
             v = idx_doc.get(fid)
@@ -80,19 +78,6 @@ def _merge_row_metadata(meta_map, index, sourcetype):
         if v is not None and not (isinstance(v, str) and not str(v).strip()):
             merged[fid] = v
     return merged
-
-
-def _parse_query_string(req):
-    path = req.get("path_info") or req.get("path") or req.get("uri") or ""
-    if isinstance(path, (bytes, bytearray)):
-        path = path.decode("utf-8", errors="replace")
-    query = req.get("query") or req.get("query_string") or ""
-    if isinstance(query, (bytes, bytearray)):
-        query = query.decode("utf-8", errors="replace")
-    if "?" in path:
-        _, q = path.split("?", 1)
-        query = q or query
-    return parse_qs(query) if query else {}
 
 
 def _int_param(params, name, default, min_v, max_v):
@@ -116,13 +101,13 @@ def _row_matches_query(merged, base_row, q_lower):
             base_row.get("sourcetype"),
             base_row.get("frozenTimePeriodInSecs"),
         ]
-        + [merged.get(f) for f in METADATA_FIELD_IDS]
+        + list(merged.values())
     )
     return q_lower in blob
 
 
 class DictionaryQueryHandler(PersistentServerConnectionApplication):
-    """GET /dictionary/query — filter catalog + merged metadata."""
+    """GET /dictionary/query - filter catalog + merged metadata."""
 
     def __init__(self, command_line=None, command_arg=None):
         super(DictionaryQueryHandler, self).__init__()
@@ -137,13 +122,14 @@ class DictionaryQueryHandler(PersistentServerConnectionApplication):
             if method != "GET":
                 return json_response({"error": "Method not allowed"}, status=405)
 
-            params = _parse_query_string(req)
+            params = query_params(req)
             q_raw = (params.get("q") or params.get("query") or [""])[0] or ""
             q_lower = q_raw.strip().lower()
             index_filter = (params.get("index") or [""])[0] or ""
             st_filter = (params.get("sourcetype") or [""])[0] or ""
             limit = _int_param(params, "limit", QUERY_LIMIT_DEFAULT, 1, QUERY_LIMIT_MAX)
             offset = _int_param(params, "offset", 0, 0, 100000)
+            flat = str((params.get("flat") or params.get("mcp") or [""])[0]).strip().lower() in ("1", "true", "yes")
 
             catalog = load_catalog_lookup(session_key)
             if catalog is None:
@@ -187,6 +173,23 @@ class DictionaryQueryHandler(PersistentServerConnectionApplication):
 
             total = len(built)
             page = built[offset : offset + limit]
+
+            if flat:
+                # Bare array of flattened rows for the MCP 'api' execution type,
+                # which turns a JSON list into the tool's result rows.
+                flat_rows = [
+                    dict(
+                        {
+                            "index": r["index"],
+                            "sourcetype": r["sourcetype"],
+                            "frozenTimePeriodInSecs": r["frozenTimePeriodInSecs"],
+                            "_key": r["_key"],
+                        },
+                        **r["metadata"],
+                    )
+                    for r in page
+                ]
+                return json_response(flat_rows)
 
             return json_response(
                 {

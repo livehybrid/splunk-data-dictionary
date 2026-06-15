@@ -13,11 +13,13 @@ common = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(common)
 json_response = common.json_response
 get_session_key = common.get_session_key
+get_system_key = common.get_system_key
 parse_body = common.parse_body
 rest_get = common.rest_get
 rest_delete = common.rest_delete
 kv_base = common.kv_base
 current_user = common.current_user
+forbidden_if_cannot_edit = common.forbidden_if_cannot_edit
 _kvstore_post_json = common._kvstore_post_json
 
 
@@ -80,17 +82,25 @@ class MetadataHandler(PersistentServerConnectionApplication):
                         return json_response({'_key': key})
                     raise
             if method in ('POST', 'PUT'):
+                denied = forbidden_if_cannot_edit(session_key)
+                if denied is not None:
+                    return denied
                 doc = dict(body)
                 doc['_key'] = key
                 doc['updated_at'] = int(time.time())
                 doc['updated_by'] = current_user(session_key) or 'unknown'
+                # Capability check passed; perform the write with system auth so a
+                # capability-holder who is not a collection-ACL admin can still save.
                 # Use KV store batch_save for upsert: create if missing, update if exists.
                 # KV store requires Content-Type: application/json and raw JSON; use _kvstore_post_json.
                 batch_path = '{}/batch_save'.format(base)
-                status, data = _kvstore_post_json(batch_path, session_key, [doc])
+                status, data = _kvstore_post_json(batch_path, get_system_key(req), [doc])
                 return json_response(data, status=status)
             if method == 'DELETE':
-                status, data = rest_delete(keyed_path, session_key)
+                denied = forbidden_if_cannot_edit(session_key)
+                if denied is not None:
+                    return denied
+                status, data = rest_delete(keyed_path, get_system_key(req))
                 return json_response(data, status=status)
             return json_response({'error': 'Method not allowed'}, status=405)
         except Exception as e:

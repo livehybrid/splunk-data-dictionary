@@ -2,16 +2,18 @@
   "name": "splunk-data-dictionary",
   "version": "0.1.0",
   "private": true,
-  "description": "Data Dictionary Splunk app — catalog of indexes/sourcetypes with governance metadata, exposed to agents as Splunk MCP tools",
+  "description": "Data Dictionary Splunk app - catalog of indexes/sourcetypes with governance metadata, exposed to agents as Splunk MCP tools",
   "scripts": {
-    "ucc:build": "ucc-gen build --source ucc-app -o build && node scripts/patch-build.js",
+    "ucc:build": "ucc-gen build --source ucc-app -o build --overwrite && node scripts/patch-build.js",
     "webpack": "webpack --config webpack.config.js",
     "build": "npm run ucc:build && npm run webpack",
     "typecheck": "tsc --noEmit -p jsconfig.json || true",
     "lint": "eslint \"src/**/*.{js,jsx}\" || true",
     "package": "node scripts/package.js",
     "licenses": "node scripts/generate-licenses.mjs",
-    "test:integration": "playwright test --config playwright.integration.config.ts"
+    "test:integration": "playwright test --config playwright.integration.config.ts",
+    "test:live": "python3 -m pytest tests/test_mcp_live.py -v",
+    "test:integration:full": "bash scripts/integration-test.sh"
   },
   "dependencies": {
     "@splunk/react-icons": "^5.0.0",

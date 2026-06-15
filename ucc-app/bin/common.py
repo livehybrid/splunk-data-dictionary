@@ -44,6 +44,57 @@ def get_session_key(req):
     return None
 
 
+def get_system_key(req):
+    """System auth token (from restmap passSystemAuth=true) for privileged KV
+    writes performed AFTER an app-level capability check. The KV collections are
+    ACL-locked to admin/sc_admin, so editing by a capability-holder who is not a
+    collection-ACL admin has to run with system auth - the edit_data_dictionary
+    capability is the access control, not the collection ACL. Falls back to the
+    user's session key if no system token is present.
+    """
+    if isinstance(req, dict):
+        sk = req.get('system_authtoken')
+        if isinstance(sk, str) and sk:
+            return sk
+    return get_session_key(req)
+
+
+def query_params(req):
+    """Return {name: [values]} from a persistent-handler request.
+
+    Robust to every shape Splunk uses for query params:
+      * req['query'] as a list of [name, value] pairs (the form splunkd uses on
+        the mgmt port 8089, i.e. when an MCP 'api' tool calls us with params=...);
+      * req['query'] / req['query_string'] as a raw URL-encoded string;
+      * a '?...' suffix tacked onto path_info (the Splunk Web :8000 proxy form).
+    """
+    q = req.get('query')
+    if isinstance(q, (list, tuple)):
+        out = {}
+        for pair in q:
+            if isinstance(pair, (list, tuple)) and pair:
+                k = str(pair[0])
+                v = pair[1] if len(pair) > 1 else ''
+                out.setdefault(k, []).append('' if v is None else str(v))
+        return out
+    if isinstance(q, (bytes, bytearray)):
+        q = q.decode('utf-8', errors='replace')
+    if not isinstance(q, str) or not q:
+        q = req.get('query_string') or ''
+        if isinstance(q, (bytes, bytearray)):
+            q = q.decode('utf-8', errors='replace')
+    if not isinstance(q, str):
+        q = ''
+    if not q:
+        path = req.get('path_info') or req.get('path') or req.get('uri') or ''
+        if isinstance(path, (bytes, bytearray)):
+            path = path.decode('utf-8', errors='replace')
+        path = str(path)
+        if '?' in path:
+            q = path.split('?', 1)[1]
+    return parse_qs(q) if q else {}
+
+
 def parse_body(req):
     raw = req.get('payload')
     if isinstance(raw, (bytes, bytearray)):
@@ -146,8 +197,10 @@ def rest_delete(path, session_key):
         return response.status, {'raw': body}
 
 
-def kv_base(session_key):
-    return '/servicesNS/nobody/{}/storage/collections/data/{}'.format(APP, KV_COLLECTION)
+def kv_base(session_key, collection=None):
+    return '/servicesNS/nobody/{}/storage/collections/data/{}'.format(
+        APP, collection or KV_COLLECTION
+    )
 
 
 def load_catalog_lookup(session_key):
@@ -252,13 +305,58 @@ def run_oneshot_search(session_key, search, earliest=None, latest=None, max_coun
     return results_resp.get("results") if isinstance(results_resp.get("results"), list) else []
 
 
-def current_user(session_key):
+def current_context(session_key):
+    """Return (username, roles, capabilities) for the calling user.
+
+    One call to /services/authentication/current-context; empty tuple on failure.
+    """
     try:
         status, data = rest_get('/services/authentication/current-context', session_key, getargs={'output_mode': 'json'})
         if status != 200:
-            return ''
-        entry = (data.get('entry') or [{}])[0]
-        content = entry.get('content') or {}
-        return content.get('username') or content.get('realname') or ''
+            return '', [], []
+        content = ((data.get('entry') or [{}])[0].get('content')) or {}
+        username = content.get('username') or content.get('realname') or ''
+        roles = content.get('roles') or []
+        caps = content.get('capabilities') or []
+        if isinstance(roles, str):
+            roles = [roles]
+        if isinstance(caps, str):
+            caps = [caps]
+        return username, list(roles), list(caps)
     except Exception:
-        return ''
+        return '', [], []
+
+
+def current_user(session_key):
+    return current_context(session_key)[0]
+
+
+# Custom capability gating all Data Dictionary metadata edits. Granted to admin
+# in authorize.conf; admins assign it to whichever roles should be able to edit.
+EDIT_CAPABILITY = 'edit_data_dictionary'
+
+
+def user_can_edit(session_key):
+    """True if the caller may mutate dictionary metadata / field definitions.
+
+    Either they hold the explicit edit_data_dictionary capability, or they are a
+    full admin (admin_all_objects) - so superusers are never locked out even
+    before the capability is assigned to any role.
+    """
+    _, _roles, caps = current_context(session_key)
+    return EDIT_CAPABILITY in caps or 'admin_all_objects' in caps
+
+
+def forbidden_if_cannot_edit(session_key):
+    """Return a 403 json_response if the caller lacks edit rights, else None."""
+    if user_can_edit(session_key):
+        return None
+    return json_response(
+        {
+            'error': 'forbidden',
+            'message': 'You do not have permission to edit the Data Dictionary. '
+                       'Ask an administrator to grant the "{}" capability to your role.'.format(EDIT_CAPABILITY),
+            'capability': EDIT_CAPABILITY,
+        },
+        status=403,
+    )

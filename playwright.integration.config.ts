@@ -11,6 +11,8 @@ const baseURL = process.env.SPLUNK_WEB_URL || 'http://127.0.0.1:8000';
 
 export default defineConfig({
     testDir: './tests/integration',
+    globalSetup: './tests/integration/global-setup.ts',
+    globalTeardown: './tests/integration/global-teardown.ts',
     fullyParallel: false,
     forbidOnly: !!process.env.CI,
     retries: process.env.CI ? 2 : 1,

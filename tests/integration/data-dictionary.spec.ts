@@ -1,7 +1,7 @@
 /**
  * Live integration tests for the Data Dictionary app, run against a real Splunk
  * instance (Docker) with the built app installed. Drives the actual React
- * bundles + REST handlers — not mocks.
+ * bundles + REST handlers - not mocks.
  *
  * Run via: npm run test:integration  (after the app is built and Splunk is up).
  * See scripts/integration-up.sh / the integration CI job for orchestration.

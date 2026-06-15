@@ -1,10 +1,10 @@
-# Architecture — Splunk Data Dictionary
+# Architecture - Splunk Data Dictionary
 
 The application catalogues every `(index, sourcetype)` pair in a Splunk estate and
 attaches **governance metadata** to it (data owner, security/service owner,
 escalation contacts, PII status, data category, export classification). It then
 surfaces that catalogue two ways: a **React UI** for people, and **Splunk MCP
-tools** for AI agents. There is no LLM inside the app — the intelligence sits in
+tools** for AI agents. There is no LLM inside the app - the intelligence sits in
 whatever agent calls the tools; the app's job is to give that agent accurate,
 governed answers about the data estate.
 
@@ -28,7 +28,7 @@ flowchart LR
     end
 
     subgraph DATA["Data layer"]
-      CAT[("data_dictionary_catalog<br/>CSV lookup — index+sourcetype")]
+      CAT[("data_dictionary_catalog<br/>CSV lookup - index+sourcetype")]
       KV[("metadata KV collection<br/>governance docs")]
       KVL["data_dictionary_metadata<br/>kvstore lookup (KV → SPL)"]
       SS["saved search<br/>'Build Catalog'"]
@@ -59,7 +59,7 @@ The app is a **native UCC-built Splunk app** that runs entirely on the search he
 
 - **UI → REST.** The React pages (`@splunk/react-ui`) call the app's **persistent
   REST handlers** (`ucc-app/bin/`, registered in `restmap.conf`) using the
-  logged-in user's **Splunk session key** — so all access honours normal Splunk
+  logged-in user's **Splunk session key** - so all access honours normal Splunk
   RBAC. No external service is involved.
 - **Catalogue.** Index/sourcetype rows live in the `data_dictionary_catalog` CSV
   lookup, populated by the **"Data Dictionary - Build Catalog"** saved search
@@ -78,15 +78,15 @@ by calling a model.
 
 - **Tool definitions** ship in `appserver/static/tool_input_payload_signatures.json`.
   The **Splunk MCP Server automatically imports** them into its `mcp_tools` KV
-  collection on install — no manual registration.
-- The three tools — `data_dictionary_index_metadata`, `data_dictionary_query`,
-  `data_dictionary_ping` — are **read-only and execute as SPL**
+  collection on install - no manual registration.
+- The three tools - `data_dictionary_index_metadata`, `data_dictionary_query`,
+  `data_dictionary_ping` - are **read-only and execute as SPL**
   (`| inputlookup data_dictionary_catalog | lookup data_dictionary_metadata …`), so
   they overlay governance onto catalogue rows with no `| rest` and run safely inside
   the MCP search sandbox.
 - Any **MCP client** can call them: Splunk's own **AI Assistant**, **Claude**, or a
   bespoke agent. The agent reads each tool's name, description and input schema, calls
-  it by name, and receives governed rows — which it uses to answer the user (e.g.
+  it by name, and receives governed rows - which it uses to answer the user (e.g.
   "whose sign-off do I need for the cultivar indexes?"). The descriptions are written
   in governance/ownership language so agents reliably select the right tool.
 

@@ -3,9 +3,9 @@
 Third-party license attribution for this app, generated reproducibly so the
 submission can show that every bundled library is open source.
 
-- **THIRD-PARTY-LICENSES.md** — summary table of every production npm
+- **THIRD-PARTY-LICENSES.md** - summary table of every production npm
   dependency (incl. transitive) with its version and SPDX license.
-- **THIRD-PARTY-NOTICES.txt** — the full license text of each package.
+- **THIRD-PARTY-NOTICES.txt** - the full license text of each package.
 
 ## Regenerate
 

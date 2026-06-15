@@ -1,6 +1,6 @@
 # Splunk Data Dictionary
 
-A Splunk app that **catalogs your indexes and sourcetypes and attaches governance metadata** to them — Data Owner, PII Status, Export Classification, Service Owner,
+A Splunk app that **catalogs your indexes and sourcetypes and attaches governance metadata** to them - Data Owner, PII Status, Export Classification, Service Owner,
 Security Owner, Escalation Contacts - and then **exposes that catalog to AI agents as Splunk MCP tools** so questions like *"who do I get sign-off from to give a user
 access to the cultivar indexes?"* can be answered straight from your favourite MCP-supporting AI system.
 
@@ -13,17 +13,22 @@ Built with the official Splunk **UCC** framework,  Webpack and Splunk React UI l
 
 ## What it does
 
-- **Catalog** — `(index, sourcetype)` rows from the `data_dictionary_catalog` lookup, populated by the scheduled **"Data Dictionary - Build Catalog"** saved
+- **Catalog** - `(index, sourcetype)` rows from the `data_dictionary_catalog` lookup, populated by the scheduled **"Data Dictionary - Build Catalog"** saved
   search (or on demand from the UI).
-- **Governance metadata** — stored in a KV Store collection, keyed `index_sourcetype:<index>:<sourcetype>` (row), `index:<name>` (index), or
+- **Governance metadata** - stored in a KV Store collection, keyed `index_sourcetype:<index>:<sourcetype>` (row), `index:<name>` (index), or
   `sourcetype:<name>` (sourcetype), and merged row → index → sourcetype so you set a value once and it inherits. A kvstore lookup (`data_dictionary_metadata`) makes
   it readable in pure SPL.
-- **Catalog UI** — a React page (`@splunk/react-ui`) to browse and edit the metadata in the familiar Splunk UI: filter by index/sourcetype, per-row **view / edit** icon actions,
+- **Catalog UI** - a React page (`@splunk/react-ui`) to browse and edit the metadata in the familiar Splunk UI: filter by index/sourcetype, per-row **view / edit** icon actions,
   dropdowns that suggest existing values, **PII Status as Yes/No**, and an **"Apply to"** scope to set metadata for one sourcetype, **all** sourcetypes in
   an index, or only the **un-set** ones. See `docs/screenshots/`.
-- **MCP tools** — the app ships three tools which the Splunk MCP Server auto-registers (`data_dictionary_query`, `data_dictionary_index_metadata`, `data_dictionary_ping`),
-  so any MCP client (e.g. Claude) can read the catalog + governance overlays. The tools execute as SPL over the lookups, however can be expanded to leverage the app's REST endpoints.
-  Reference + captured I/O: [`docs/MCP-TOOLS.md`](./docs/MCP-TOOLS.md).
+- **Custom fields** - the standard governance fields ship with the app, but admins can define their own (a **Fields** page: customisable *Select* dropdowns and *Boolean*
+  Yes/No). Custom fields appear in the catalogue editor and flow through to the MCP tools automatically.
+- **RBAC** - a simple can/cannot-edit model. Browsing and the MCP query tools are open; every metadata / field / catalog-rebuild **write** requires the custom
+  `edit_data_dictionary` capability (granted to `admin`; assign it to whichever roles should curate). Enforced server-side; the UI hides edit controls and shows a
+  read-only badge for users without it.
+- **MCP tools** - the app ships three tools which the Splunk MCP Server registers (`data_dictionary_query`, `data_dictionary_index_metadata`, `data_dictionary_ping`),
+  so any MCP client (e.g. Claude) can read the catalog + governance overlays. `ping` runs as SPL; **query** and **index_metadata** run as **API** tools that proxy to the
+  app's own REST handlers (returning a flat row array), so all standard + custom governance fields are returned. Reference + captured I/O: [`docs/MCP-TOOLS.md`](./docs/MCP-TOOLS.md).
 
 ### Claude Chat example
 Providing access to Splunk via Claude allows non-Splunk users, or even existing Splunk users, that allows them to quickly determine the metadata, e.g. security or operational contact, relating to a specific index or data source.
@@ -71,16 +76,18 @@ See [https://docs.splunk.com/Documentation/AddOns/released/Overview/Singleserver
 
 ## The MCP tools
 
-The app registers its catalog as agent tools. Each one is read-only and runs SPL against `data_dictionary_catalog` overlaid with the `data_dictionary_metadata` KV
-lookup (see `docs/MCP-TOOLS.md` for full schemas + real captured output). Future roadmap item to allow updating the data dictionary via MCP:
+The app registers its catalog as agent tools. Each one is read-only: `data_dictionary_ping` runs a small SPL template, while `data_dictionary_query` and
+`data_dictionary_index_metadata` are **API** tools that proxy to the app's REST handlers (returning a flat row array of catalog + merged governance metadata, custom
+fields included). See `docs/MCP-TOOLS.md` for full schemas + real captured output. Future roadmap item to allow updating the data dictionary via MCP:
 
 | Tool | Answers |
 | --- | --- |
-| `data_dictionary_index_metadata` | Governance/ownership for a **named index** — who owns it, who to get access **sign-off** from, security/service owner, escalation contacts, PII status, classification, per sourcetype. |
+| `data_dictionary_index_metadata` | Governance/ownership for a **named index** - who owns it, who to get access **sign-off** from, security/service owner, escalation contacts, PII status, classification, per sourcetype. |
 | `data_dictionary_query` | **Search across all** indexes/sourcetypes by keyword to find data and its owners/PII/classification (e.g. "who owns the cultivar data?"). |
 | `data_dictionary_ping` | Health check + catalog row count. |
 
-Registration is automatic: the Splunk MCP Server imports each app's `appserver/static/tool_input_payload_signatures.json` into its `mcp_tools` KV collection.
+Registration: `appserver/static/tool_input_payload_signatures.json` is the single source of truth; `deploy/register_mcp_tools.py` writes each tool (full-doc replace)
+into the Splunk MCP Server's `mcp_tools` + `mcp_tools_enabled` KV collections.
 
 ## Repository layout
 
@@ -91,6 +98,7 @@ ucc-app/                     UCC source of truth: app.manifest, default/ (restma
                              endpoint), lookups/, appserver/ (templates + the MCP
                              signature JSON).
 src/main/webapp/pages/       React entries (Webpack): home/ (catalog editor),
+                             fields/ (custom field-definition admin),
                              mcp_tools/ (MCP + REST API docs page).
 webpack.config.js            Bundles pages -> stage/appserver/static/pages/*.js and
                              copies the UCC app tree into stage/.
@@ -105,19 +113,19 @@ docker/                      Local Splunk dev harness (compose + Makefile).
 
 ## Backend (persistent REST handlers, `ucc-app/bin/`)
 
-One Python module per endpoint — these power the React UI and are also callable
-directly (the MCP tools, by contrast, run SPL — see `docs/MCP-TOOLS.md`):
+One Python module per endpoint - these power the React UI and are also callable
+directly (the MCP tools, by contrast, run SPL - see `docs/MCP-TOOLS.md`):
 
-- **ping.py** — health check.
-- **discovery_catalog.py / discovery_indexes.py / discovery_sourcetypes.py** —
+- **ping.py** - health check.
+- **discovery_catalog.py / discovery_indexes.py / discovery_sourcetypes.py** -
   catalog + Splunk REST discovery.
-- **metadata.py** — list / get / upsert (`batch_save`) / delete governance metadata.
-- **dictionary.py / dictionary_query.py** — catalog + merged metadata for one index
+- **metadata.py** - list / get / upsert (`batch_save`) / delete governance metadata.
+- **dictionary.py / dictionary_query.py** - catalog + merged metadata for one index
   / searched across the estate.
-- **options.py** — option lists for the edit-form dropdowns.
-- **build_catalog.py** — dispatches the catalog-build saved search (the home page's
+- **options.py** - option lists for the edit-form dropdowns.
+- **build_catalog.py** - dispatches the catalog-build saved search (the home page's
   "Run catalog search" button).
-- **common.py** — shared helpers (session key, KV REST, lookup loaders).
+- **common.py** - shared helpers (session key, KV REST, lookup loaders).
 
 ## Local dev with Docker
 
@@ -127,6 +135,19 @@ cd docker && make up && make wait && make port   # bind-mounts stage/ into Splun
 ```
 
 Open the URL `make port` prints; login `admin` / `Changeme1!`.
+
+### Full integration harness (app + MCP Server + tests)
+
+```bash
+npm run test:integration:full   # build -> Splunk in Docker -> install/configure the
+                                # MCP Server + register tools -> live pytest + Playwright
+```
+
+This boots Splunk, installs the app, and - when you supply the (third-party)
+Splunk MCP Server as `vendor/Splunk_MCP_Server.tgz` - installs/configures it and
+registers the tools, then runs the live REST/RBAC/MCP pytest and the Playwright
+UI suite (rendering, RBAC, custom fields). See
+[`docs/INTEGRATION-TESTING.md`](./docs/INTEGRATION-TESTING.md).
 
 ## Built & validated by GitHub Actions
 
@@ -147,9 +168,11 @@ the build uses Splunk's official **UCC** (`ucc-gen`).
 
 ## Roadmap
 
+- **Shipped** - **custom metadata fields** (admin-defined Select/Boolean fields, surfaced to the UI and MCP tools); **RBAC** (the `edit_data_dictionary` capability gating
+  all writes); the read tools moved to **API execution** proxying the app's REST handlers.
 - **Automated Splunkbase publish** is wired (reusable `publish.yml` on `v*` tags); next is a broader **Splunk version test matrix** (`splunk/addonfactory-test-matrix-action`).
-- **Update data dictionary from MCP** - currently the MCP tools are limited to retrieval and not pushing of metadata to the catalog/dictionary. Further MCP tools to manage CRUD
-  (Create, Read, Update, Delete) capabilities would require further security and RBAC work to be undertaken to ensure that un-authorised users could not modify the data.
+- **Update data dictionary from MCP** - the MCP tools are currently retrieval-only. The `edit_data_dictionary` capability now provides the RBAC foundation, so write-capable
+  MCP tools (CRUD) could be added that enforce the same capability before mutating the catalog/dictionary.
 
 ## Requirements
 

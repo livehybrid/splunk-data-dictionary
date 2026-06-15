@@ -1,4 +1,4 @@
-# Redeploy — Data Dictionary MCP tool fix
+# Redeploy - Data Dictionary MCP tool fix
 
 This document gives the **exact** steps to apply the Round-2 fix for the two
 broken MCP tools (`data_dictionary_query`, `data_dictionary_index_metadata`) to a
@@ -36,11 +36,11 @@ Files changed (relative to the app root `$SPLUNK_HOME/etc/apps/data_dictionary`)
 | `appserver/static/tool_input_payload_signatures.json` | `| rest` templates → `| inputlookup` + `| lookup` SPL |
 | `default/transforms.conf` | add `[data_dictionary_metadata]` kvstore lookup |
 
-The Python REST handlers in `bin/` are **unchanged** — they already used KV REST
+The Python REST handlers in `bin/` are **unchanged** - they already used KV REST
 (`splunk.rest.simpleRequest`) and never used `| rest` SPL. Only the MCP execution
 templates and the lookup definition needed fixing.
 
-## Step 1 — back up the current files
+## Step 1 - back up the current files
 
 ```bash
 APP=/opt/splunk/etc/apps/data_dictionary
@@ -50,7 +50,7 @@ sudo -u splunk cp "$APP/default/transforms.conf" \
   "$APP/default/transforms.conf.bak.$(date +%s)"
 ```
 
-## Step 2 — copy the fixed files from this repo
+## Step 2 - copy the fixed files from this repo
 
 Run from the repo root (`splunk-data-dictionary/`):
 
@@ -67,7 +67,7 @@ If you cannot `sudo -u splunk`, add this sudoers line (skill guidance) first:
 aios ALL=(splunk) NOPASSWD: /bin/cp
 ```
 
-## Step 3 — reload (preferred) or restart
+## Step 3 - reload (preferred) or restart
 
 `transforms.conf` and the static MCP signature JSON can be picked up **without a
 full restart**:
@@ -90,7 +90,7 @@ curl -sk -u admin:<password> \
 > needs to re-read the file (restart of the MCP server component). Avoid a full
 > `splunkd` restart on the shared box unless coordinated.
 
-## Step 4 — verify via MCP
+## Step 4 - verify via MCP
 
 Use the working MCP recipe (token in `/opt/aios/.hackathon-secrets.env`):
 
@@ -100,10 +100,10 @@ mcp(){ curl -sk --max-time 60 -X POST "$SPLUNK_MCP_URL" \
   -H "Authorization: Bearer $SPLUNK_TOKEN" -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" -d "$1" | sed 's/^data: //'; }
 
-# Was: "Forbidden command found: rest" — should now return rows:
+# Was: "Forbidden command found: rest" - should now return rows:
 mcp '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"data_dictionary_index_metadata","arguments":{"index":"pihole"}}}'
 
-# Was: rest parse error — should now return up to `limit` rows:
+# Was: rest parse error - should now return up to `limit` rows:
 mcp '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"data_dictionary_query","arguments":{"q":"dns","limit":20}}}'
 
 # Health: should return ok=true plus catalog_rows (e.g. 296):
@@ -127,7 +127,7 @@ sudo -u splunk cp "$APP/default/transforms.conf.bak.<ts>" "$APP/default/transfor
 
 ---
 
-## RESOLVED 2026-06-10 — actual root cause and fix applied
+## RESOLVED 2026-06-10 - actual root cause and fix applied
 
 The file-copy + `_reload` approach above was **not sufficient**: the Splunk MCP
 Server does not read `tool_input_payload_signatures.json` at call time. Tools
@@ -140,11 +140,11 @@ found and fixed when re-registering:
    add their own quotes: `| search index=$index$`, `lower($q$)`. The previous
    templates produced `index=""pihole""` (0 rows) and `lower(""dns"")` (parse
    error).
-2. **Defaults bypass quoting** — optional string args need pre-quoted defaults
+2. **Defaults bypass quoting** - optional string args need pre-quoted defaults
    (`"default": "\"\""` in inputSchema) so the template stays valid when the
    arg is omitted. `limit` defaults to 50.
 3. **SPL tools must not carry API execution fields** (`method`/`endpoint`/...)
-   — the loader rejects the tool outright ("SPL tools cannot define API
+   - the loader rejects the tool outright ("SPL tools cannot define API
    execution fields"), which silently removes it from tools/list. A PUT to
    `/services/mcp_tools` MERGES `_meta.execution`, so updating an old API-shaped
    doc leaves stale fields behind: replace the whole KV doc instead.

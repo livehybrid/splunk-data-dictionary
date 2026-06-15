@@ -9,7 +9,7 @@ const APP_ID = 'data_dictionary';
 const appConfPath = path.join(__dirname, '..', 'build', APP_ID, 'default', 'app.conf');
 
 if (!fs.existsSync(appConfPath)) {
-    console.error(`[patch-build] ${appConfPath} not found — did ucc-gen build run?`);
+    console.error(`[patch-build] ${appConfPath} not found - did ucc-gen build run?`);
     process.exit(0);
 }
 
@@ -62,7 +62,7 @@ try {
     console.warn('[patch-build] could not normalise build app.manifest version:', e.message);
 }
 
-// Tracked globalConfig.json — keep the working tree clean (no SHA churn).
+// Tracked globalConfig.json - keep the working tree clean (no SHA churn).
 const gcPath = path.join(__dirname, '..', 'globalConfig.json');
 try {
     const gc = JSON.parse(fs.readFileSync(gcPath, 'utf8'));
