@@ -1,6 +1,6 @@
 [
   {
-    "tool_id": "data_dictionary:data_dictionary_index_metadata",
+    "tool_id": "data_dictionary_for_splunk:data_dictionary_index_metadata",
     "name": "data_dictionary_index_metadata",
     "title": "data_dictionary_index_metadata",
     "description": "Look up data GOVERNANCE and OWNERSHIP for a specific, named Splunk index. Use this to answer questions like: 'who owns this index?', 'who do I need to get sign-off / approval from to give a user access to (or onboard data into) this index?', 'who is the data owner / security owner / service owner / escalation contact for this index?', 'is this index PII or sensitive, and what is its data classification?'. Given an index name it returns every sourcetype in that index with its data owner, security owner, service owner, escalation contacts, PII status, data category and export classification \u2014 the authoritative governance/ownership record for that index, merged from index-level and sourcetype-level metadata in the Data Dictionary. Use this when the user names a specific index; use data_dictionary_query to search across indexes by keyword or topic. Any custom governance fields defined for the dictionary are returned alongside the standard ones.",
@@ -69,7 +69,7 @@
     }
   },
   {
-    "tool_id": "data_dictionary:data_dictionary_query",
+    "tool_id": "data_dictionary_for_splunk:data_dictionary_query",
     "name": "data_dictionary_query",
     "title": "data_dictionary_query",
     "description": "Search the Data Dictionary across ALL Splunk indexes and sourcetypes to find data and its GOVERNANCE / OWNERSHIP by keyword or topic. Use this when the exact index name is not known, or to match a team, product or data domain \u2014 for example: 'who owns the customer / payment / cultivar data?', 'I need to give a user access to the X indexes, who do I get sign-off / approval from?', 'which indexes or sourcetypes are PII?', 'what data is owned by team X or classified Restricted?'. The 'q' term is matched (case-insensitive) across the index name, the sourcetype, AND every governance field \u2014 data owner, security owner, service owner, escalation contacts, PII status, data category and export classification \u2014 so it finds the owners and sign-off contacts even when you only know the topic. Returns the matching catalog rows with their owners, approval/escalation contacts, PII status and classification. Optional exact index/sourcetype filters; limit (1-500, default 100). For a single known index, prefer data_dictionary_index_metadata. Any custom governance fields defined for the dictionary are returned alongside the standard ones.",
@@ -163,7 +163,7 @@
     }
   },
   {
-    "tool_id": "data_dictionary:data_dictionary_ping",
+    "tool_id": "data_dictionary_for_splunk:data_dictionary_ping",
     "name": "data_dictionary_ping",
     "title": "data_dictionary_ping",
     "description": "Lightweight health check for the Data Dictionary app. Returns { ok: true, app: data_dictionary_for_splunk, catalog_rows: N } when the catalog lookup is reachable.",

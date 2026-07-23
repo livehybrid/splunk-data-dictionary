@@ -1,6 +1,6 @@
 {
   "name": "splunk-data-dictionary",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Data Dictionary Splunk app - catalog of indexes/sourcetypes with governance metadata, exposed to agents as Splunk MCP tools",
   "scripts": {

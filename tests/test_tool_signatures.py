@@ -42,6 +42,7 @@ COPIES = {
 
 APP = "data_dictionary_for_splunk"
 EXPECTED_APP_ID = "data_dictionary_for_splunk"
+REST_ROOT = "data_dictionary"  # restRoot kept when the app id was renamed - endpoint paths did not change
 SPL_TOOLS = {"data_dictionary_ping"}
 API_TOOLS = {"data_dictionary_query", "data_dictionary_index_metadata"}
 
@@ -156,8 +157,8 @@ def test_api_tools_proxy_to_app_rest_handlers():
             f"[{copy_name}] {tool['name']}: API tool should be GET"
         )
         endpoint = execu.get("endpoint", "")
-        assert isinstance(endpoint, str) and endpoint.startswith(f"/services/{APP}/dictionary/"), (
-            f"[{copy_name}] {tool['name']}: endpoint should target /services/{APP}/dictionary/*, "
+        assert isinstance(endpoint, str) and endpoint.startswith(f"/services/{REST_ROOT}/dictionary/"), (
+            f"[{copy_name}] {tool['name']}: endpoint should target /services/{REST_ROOT}/dictionary/*, "
             f"got {endpoint!r}"
         )
         assert "template" not in execu, (
