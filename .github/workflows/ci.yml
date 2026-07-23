@@ -69,6 +69,12 @@ jobs:
           node scripts/package.js
           TARBALL=$(ls dist/*.tar.gz | head -1)
           echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+      # Splunkbase runs SLIM on upload, which resolves every file reference in
+      # app.manifest — no AppInspect tag group does, so without this gate a
+      # manifest pointing at an unshipped file sails through CI and dies on
+      # Splunkbase (info.license.text, 2026-07-23).
+      - name: SLIM parity - manifest file references resolve in the tarball
+        run: python3 scripts/verify_manifest_refs.py "${{ steps.pkg.outputs.tarball }}"
       - name: Upload package (consumed by the reusable AppInspect workflows as 'dist')
         uses: actions/upload-artifact@v4
         with:
