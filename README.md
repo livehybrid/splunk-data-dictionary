@@ -58,7 +58,7 @@ cd splunk-data-dictionary
 pip install splunk-add-on-ucc-framework
 npm install --legacy-peer-deps
 npm run build          # ucc-gen + webpack -> stage/ (complete app)
-npm run package        # -> dist/data_dictionary_for_splunk-1.1.1.tar.gz
+npm run package        # -> dist/data_dictionary_for_splunk-1.1.2.tar.gz
 
 # 2. Tests (no live Splunk required)
 pip install pytest ruff
@@ -67,7 +67,7 @@ pytest tests           # tool-signature invariants; live MCP tests auto-skip
 
 # 3. AppInspect (precert) on the package
 pip install splunk-appinspect==4.2.1
-splunk-appinspect inspect dist/data_dictionary_for_splunk-1.1.1.tar.gz --mode precert
+splunk-appinspect inspect dist/data_dictionary_for_splunk-1.1.2.tar.gz --mode precert
 ```
 
 Install the tarball via **Apps -> Manage Apps -> Install app from file**, or

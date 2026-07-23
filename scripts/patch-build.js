@@ -38,7 +38,7 @@ function setKey(text, stanza, key, value) {
 // tracked working tree all agree. CANONICAL_VERSION is the single source of truth.
 // A release build overrides it via APP_VERSION (CI sets this from the git tag) so
 // the app.conf / app.manifest / tarball version all match the release.
-const CANONICAL_VERSION = process.env.APP_VERSION || '1.1.1';
+const CANONICAL_VERSION = process.env.APP_VERSION || '1.1.2';
 
 conf = setKey(conf, 'ui', 'is_visible', 'true');
 conf = setKey(conf, 'install', 'is_configured', 'false');

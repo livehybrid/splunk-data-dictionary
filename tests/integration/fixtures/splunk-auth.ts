@@ -61,17 +61,17 @@ export async function loginAs(
     pw: string,
     view: 'home' | 'fields' | 'mcp_tools' = 'home'
 ): Promise<Page | FrameLocator> {
-    await page.goto(`/app/data_dictionary/${view}`, { waitUntil: 'commit', timeout: 30000 });
+    await page.goto(`/app/data_dictionary_for_splunk/${view}`, { waitUntil: 'commit', timeout: 30000 });
     await page.waitForLoadState('domcontentloaded').catch(() => {});
     await login(page, user, pw);
-    await page.goto(`/app/data_dictionary/${view}`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    await page.goto(`/app/data_dictionary_for_splunk/${view}`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
     return appRoot(page);
 }
 
 export const test = base.extend<Fixtures>({
     authenticated: [
         async ({ page }, use) => {
-            await page.goto('/app/data_dictionary/home', { waitUntil: 'commit', timeout: 30000 });
+            await page.goto('/app/data_dictionary_for_splunk/home', { waitUntil: 'commit', timeout: 30000 });
             await page.waitForLoadState('domcontentloaded').catch(() => {});
             await login(page);
             await use();

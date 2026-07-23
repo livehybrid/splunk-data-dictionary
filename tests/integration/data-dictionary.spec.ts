@@ -51,12 +51,12 @@ test.describe('MCP tools page', () => {
         // Splunk sometimes aborts the first navigation with a client-side redirect
         // (net::ERR_ABORTED); retry once and wait for the real document.
         try {
-            await page.goto('/app/data_dictionary/mcp_tools', {
+            await page.goto('/app/data_dictionary_for_splunk/mcp_tools', {
                 waitUntil: 'domcontentloaded',
                 timeout: 30000,
             });
         } catch {
-            await page.goto('/app/data_dictionary/mcp_tools', {
+            await page.goto('/app/data_dictionary_for_splunk/mcp_tools', {
                 waitUntil: 'domcontentloaded',
                 timeout: 30000,
             });
