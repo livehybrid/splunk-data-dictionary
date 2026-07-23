@@ -44,6 +44,25 @@ wait_ready() {
     return 1
 }
 
+wait_kvstore() {
+    # Splunk Web answering does NOT mean the KV store is up — mongod inits after
+    # splunkd and the app's KV-backed endpoints 503 ("KV Store is initializing")
+    # until it reports ready. Both 2026-07-23 CI runs failed on exactly this race.
+    echo "Waiting for KV store on https://127.0.0.1:${MGMT_PORT} (up to ~4 min)..."
+    for i in $(seq 1 40); do
+        if curl -sk -u "admin:${SPLUNK_PASSWORD}" \
+            "https://127.0.0.1:${MGMT_PORT}/services/kvstore/status?output_mode=json" \
+            | grep -q '"status" *: *"ready"'; then
+            echo "KV store is ready after ~$((i * 6))s."
+            return 0
+        fi
+        sleep 6
+    done
+    echo "ERROR: timed out waiting for the KV store." >&2
+    docker logs --tail 80 "$CONTAINER" >&2 || true
+    return 1
+}
+
 case "${1:-}" in
     up)
         if [ ! -f "$ROOT/stage/appserver/static/pages/home.js" ]; then
@@ -60,9 +79,11 @@ case "${1:-}" in
             -v "$ROOT/stage:/opt/splunk/etc/apps/data_dictionary_for_splunk" \
             "$SPLUNK_IMAGE" >/dev/null
         wait_ready
+        wait_kvstore
         ;;
     wait)
         wait_ready
+        wait_kvstore
         ;;
     logs)
         docker logs --tail "${2:-120}" "$CONTAINER" || true
