@@ -20,7 +20,7 @@ get_session_key = common.get_session_key
 get_system_key = common.get_system_key
 forbidden_if_cannot_edit = common.forbidden_if_cannot_edit
 
-APP = "data_dictionary"
+APP = "data_dictionary_for_splunk"
 SAVED_SEARCH = "Data Dictionary - Build Catalog"
 
 

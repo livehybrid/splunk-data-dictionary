@@ -2,7 +2,7 @@ import { app } from '@splunk/splunk-utils/config';
 import { getDefaultFetchInit } from '@splunk/splunk-utils/fetch';
 import { createRESTURL } from '@splunk/splunk-utils/url';
 
-const APP = 'data_dictionary';
+const APP = 'data_dictionary_for_splunk';
 const API_PREFIX = 'data_dictionary';
 
 function url(endpoint) {

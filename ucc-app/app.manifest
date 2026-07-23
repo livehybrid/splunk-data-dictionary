@@ -10,7 +10,7 @@
         "description": "Catalog Splunk indexes, sourcetypes, and sources with metadata (Data Owner, PII, Export Classification).",
         "id": {
             "group": null,
-            "name": "data_dictionary",
+            "name": "data_dictionary_for_splunk",
             "version": "0.0.0+1e55463"
         },
         "license": {

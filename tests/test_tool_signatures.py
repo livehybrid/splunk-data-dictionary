@@ -19,8 +19,8 @@ So the current invariants are:
                       endpoint, no SPL template, params carry flat=1 so the handler
                       returns the bare array the API executor expects.
   - all tools       : flat ($ref-free) input schema; identifiers aligned with the
-                      live registration (tool_id == "data_dictionary:<name>",
-                      external_app_id == required_app == "data_dictionary").
+                      live registration (tool_id == "data_dictionary_for_splunk:<name>",
+                      external_app_id == required_app == "data_dictionary_for_splunk").
   - no optional string arg carries the old pre-quoted `'""'` default - that was an
     SPL-quoting hack; for an API tool it would send a literal `""` query value.
 
@@ -40,8 +40,8 @@ COPIES = {
     "ucc-app": os.path.join(REPO, "ucc-app", SIG_REL),
 }
 
-APP = "data_dictionary"
-EXPECTED_APP_ID = "data_dictionary"
+APP = "data_dictionary_for_splunk"
+EXPECTED_APP_ID = "data_dictionary_for_splunk"
 SPL_TOOLS = {"data_dictionary_ping"}
 API_TOOLS = {"data_dictionary_query", "data_dictionary_index_metadata"}
 

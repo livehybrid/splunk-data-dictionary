@@ -23,7 +23,7 @@ try:
 except Exception:  # pragma: no cover - only importable inside splunkd
     rest = None
 
-APP = "data_dictionary"
+APP = "data_dictionary_for_splunk"
 SIG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                    "appserver", "static", "tool_input_payload_signatures.json")
 KV = "/servicesNS/nobody/Splunk_MCP_Server/storage/collections/data"

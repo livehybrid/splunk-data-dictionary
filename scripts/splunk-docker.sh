@@ -57,7 +57,7 @@ case "${1:-}" in
             -e SPLUNK_START_ARGS=--accept-license \
             -e SPLUNK_GENERAL_TERMS=--accept-sgt-current-at-splunk-com \
             -e SPLUNK_PASSWORD="$SPLUNK_PASSWORD" \
-            -v "$ROOT/stage:/opt/splunk/etc/apps/data_dictionary" \
+            -v "$ROOT/stage:/opt/splunk/etc/apps/data_dictionary_for_splunk" \
             "$SPLUNK_IMAGE" >/dev/null
         wait_ready
         ;;

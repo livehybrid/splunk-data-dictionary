@@ -29,7 +29,7 @@ Supporting change: a new **KV-store lookup definition** `data_dictionary_metadat
 (over the existing `[metadata]` collection) was added to
 `default/transforms.conf` so the `| lookup` works without `| rest`.
 
-Files changed (relative to the app root `$SPLUNK_HOME/etc/apps/data_dictionary`):
+Files changed (relative to the app root `$SPLUNK_HOME/etc/apps/data_dictionary_for_splunk`):
 
 | File | Change |
 |------|--------|
@@ -43,7 +43,7 @@ templates and the lookup definition needed fixing.
 ## Step 1 - back up the current files
 
 ```bash
-APP=/opt/splunk/etc/apps/data_dictionary
+APP=/opt/splunk/etc/apps/data_dictionary_for_splunk
 sudo -u splunk cp "$APP/appserver/static/tool_input_payload_signatures.json" \
   "$APP/appserver/static/tool_input_payload_signatures.json.bak.$(date +%s)"
 sudo -u splunk cp "$APP/default/transforms.conf" \
@@ -55,7 +55,7 @@ sudo -u splunk cp "$APP/default/transforms.conf" \
 Run from the repo root (`splunk-data-dictionary/`):
 
 ```bash
-APP=/opt/splunk/etc/apps/data_dictionary
+APP=/opt/splunk/etc/apps/data_dictionary_for_splunk
 sudo -u splunk cp app/appserver/static/tool_input_payload_signatures.json \
   "$APP/appserver/static/tool_input_payload_signatures.json"
 sudo -u splunk cp app/default/transforms.conf "$APP/default/transforms.conf"
@@ -75,9 +75,9 @@ full restart**:
 ```bash
 # Reload the app's conf (transforms, tools registration):
 curl -sk -u admin:<password> \
-  https://127.0.0.1:8089/servicesNS/nobody/data_dictionary/admin/transforms-lookup/_reload
+  https://127.0.0.1:8089/servicesNS/nobody/data_dictionary_for_splunk/admin/transforms-lookup/_reload
 curl -sk -u admin:<password> \
-  https://127.0.0.1:8089/services/apps/local/data_dictionary/_reload
+  https://127.0.0.1:8089/services/apps/local/data_dictionary_for_splunk/_reload
 
 # Tell the MCP server to re-read tool signatures (it caches them). If the MCP
 # server does not hot-reload signatures, bounce only the MCP app/server process,
@@ -117,7 +117,7 @@ rows; `data_dictionary_ping` returns `catalog_rows >= 1`.
 ## Rollback
 
 ```bash
-APP=/opt/splunk/etc/apps/data_dictionary
+APP=/opt/splunk/etc/apps/data_dictionary_for_splunk
 sudo -u splunk cp "$APP/appserver/static/tool_input_payload_signatures.json.bak.<ts>" \
   "$APP/appserver/static/tool_input_payload_signatures.json"
 sudo -u splunk cp "$APP/default/transforms.conf.bak.<ts>" "$APP/default/transforms.conf"

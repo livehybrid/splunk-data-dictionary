@@ -43,7 +43,7 @@ to `exclude_tools`), which couples our tool to that server's configuration.
       "template": "| rest /services/data/indexes | fields title, frozenTimePeriodInSecs",
       "guardrails": false
     },
-    "external_app_id": "data_dictionary"
+    "external_app_id": "data_dictionary_for_splunk"
   }
 }
 ```
@@ -81,10 +81,10 @@ write-back) than a lookup query can express:
     "execution": {
       "type": "api",
       "method": "GET",
-      "endpoint": "/servicesNS/nobody/data_dictionary/data_dictionary/dictionary/query",
+      "endpoint": "/servicesNS/nobody/data_dictionary_for_splunk/data_dictionary/dictionary/query",
       "params": { "q": "$q$", "output_mode": "json" }
     },
-    "external_app_id": "data_dictionary"
+    "external_app_id": "data_dictionary_for_splunk"
   }
 }
 ```

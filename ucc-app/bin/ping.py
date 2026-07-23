@@ -13,7 +13,7 @@ _spec.loader.exec_module(common)
 json_response = common.json_response
 get_session_key = common.get_session_key
 
-APP = 'data_dictionary'
+APP = 'data_dictionary_for_splunk'
 
 
 class PingHandler(PersistentServerConnectionApplication):

@@ -89,7 +89,7 @@ its row count. Call it first when troubleshooting MCP/UI connectivity.
 // result.structuredContent
 {
   "results": [
-    { "ok": "true", "app": "data_dictionary", "catalog_rows": "296" }
+    { "ok": "true", "app": "data_dictionary_for_splunk", "catalog_rows": "296" }
   ],
   "truncated": false,
   "total_rows": 1

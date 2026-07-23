@@ -66,7 +66,7 @@ def _tools():
 def register():
     for tool in _tools():
         name = tool["name"]
-        tool_id = tool.get("tool_id") or f"data_dictionary:{name}"
+        tool_id = tool.get("tool_id") or f"data_dictionary_for_splunk:{name}"
         doc = dict(tool)
         doc["_key"] = tool_id
         doc["tool_id"] = tool_id
@@ -86,7 +86,7 @@ def register():
 def remove():
     for tool in _tools():
         name = tool["name"]
-        tool_id = tool.get("tool_id") or f"data_dictionary:{name}"
+        tool_id = tool.get("tool_id") or f"data_dictionary_for_splunk:{name}"
         _req("DELETE", f"{BASE}/mcp_tools/{_enc(tool_id)}")
         _req("DELETE", f"{BASE}/mcp_tools_enabled/{_enc(name)}")
         print(f"  removed {name}")

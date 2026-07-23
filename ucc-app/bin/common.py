@@ -11,7 +11,7 @@ SEARCH_INPUTLOOKUP_CATALOG = "| inputlookup data_dictionary_catalog"
 CATALOG_POLL_INTERVAL = 0.5
 CATALOG_POLL_TIMEOUT = 30
 
-APP = 'data_dictionary'
+APP = 'data_dictionary_for_splunk'
 KV_COLLECTION = 'metadata'
 
 

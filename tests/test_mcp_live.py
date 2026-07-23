@@ -261,7 +261,7 @@ def _mcp_rows(doc):
 @mcp_gate
 def test_mcp_ping():
     rows = _mcp_rows(_mcp_call("data_dictionary_ping", {}))
-    assert rows and rows[0].get("app") == "data_dictionary"
+    assert rows and rows[0].get("app") == "data_dictionary_for_splunk"
 
 
 @mcp_gate
