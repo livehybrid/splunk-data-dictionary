@@ -64,8 +64,8 @@
           "flat": "1"
         }
       },
-      "external_app_id": "data_dictionary",
-      "required_app": "data_dictionary"
+      "external_app_id": "data_dictionary_for_splunk",
+      "required_app": "data_dictionary_for_splunk"
     }
   },
   {
@@ -158,15 +158,15 @@
           "limit": "$limit$"
         }
       },
-      "external_app_id": "data_dictionary",
-      "required_app": "data_dictionary"
+      "external_app_id": "data_dictionary_for_splunk",
+      "required_app": "data_dictionary_for_splunk"
     }
   },
   {
     "tool_id": "data_dictionary:data_dictionary_ping",
     "name": "data_dictionary_ping",
     "title": "data_dictionary_ping",
-    "description": "Lightweight health check for the Data Dictionary app. Returns { ok: true, app: data_dictionary, catalog_rows: N } when the catalog lookup is reachable.",
+    "description": "Lightweight health check for the Data Dictionary app. Returns { ok: true, app: data_dictionary_for_splunk, catalog_rows: N } when the catalog lookup is reachable.",
     "inputSchema": {
       "type": "object",
       "properties": {},
@@ -193,8 +193,8 @@
         "row_limiter": false,
         "time_range": false
       },
-      "external_app_id": "data_dictionary",
-      "required_app": "data_dictionary"
+      "external_app_id": "data_dictionary_for_splunk",
+      "required_app": "data_dictionary_for_splunk"
     }
   }
 ]

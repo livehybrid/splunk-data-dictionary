@@ -1,12 +1,12 @@
 /* eslint-disable */
-// Package stage/ into dist/data_dictionary-<version>.tar.gz.
+// Package stage/ into dist/data_dictionary_for_splunk-<version>.tar.gz.
 // Excludes dotfiles (AppInspect Cloud rejects them) and fixes permissions.
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const APP_ID = 'data_dictionary';
+const APP_ID = 'data_dictionary_for_splunk';
 const STAGE = path.join(ROOT, 'stage');
 const TEMP = path.join(ROOT, 'temp-package', APP_ID);
 const DIST = path.join(ROOT, 'dist');

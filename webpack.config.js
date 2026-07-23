@@ -2,7 +2,7 @@
 const path = require('path');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 
-const APP_ID = 'data_dictionary';
+const APP_ID = 'data_dictionary_for_splunk';
 // Defaults to ./stage; override with WP_STAGE for environments where stage/ is
 // owned by another user (e.g. a box that also runs Splunk).
 const STAGE = process.env.WP_STAGE ? path.resolve(process.env.WP_STAGE) : path.join(__dirname, 'stage');

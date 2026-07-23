@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const APP_ID = 'data_dictionary';
+const APP_ID = 'data_dictionary_for_splunk';
 const appConfPath = path.join(__dirname, '..', 'build', APP_ID, 'default', 'app.conf');
 
 if (!fs.existsSync(appConfPath)) {
@@ -38,7 +38,7 @@ function setKey(text, stanza, key, value) {
 // tracked working tree all agree. CANONICAL_VERSION is the single source of truth.
 // A release build overrides it via APP_VERSION (CI sets this from the git tag) so
 // the app.conf / app.manifest / tarball version all match the release.
-const CANONICAL_VERSION = process.env.APP_VERSION || '0.1.0';
+const CANONICAL_VERSION = process.env.APP_VERSION || '1.1.0';
 
 conf = setKey(conf, 'ui', 'is_visible', 'true');
 conf = setKey(conf, 'install', 'is_configured', 'false');

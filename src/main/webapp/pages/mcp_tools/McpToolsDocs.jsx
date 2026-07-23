@@ -191,7 +191,7 @@ export default function McpToolsDocs() {
             </div>
 
             <Paragraph>
-                <Link to="/app/data_dictionary/home" appearance="standalone">
+                <Link to="/app/data_dictionary_for_splunk/home" appearance="standalone">
                     Back to Data Dictionary catalog
                 </Link>
             </Paragraph>

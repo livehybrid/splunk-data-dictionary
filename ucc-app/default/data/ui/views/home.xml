@@ -1,4 +1,4 @@
 <?xml version="1.0"?>
-<view template="data_dictionary:/templates/home.html" type="html">
+<view template="data_dictionary_for_splunk:/templates/home.html" type="html">
 	<label>Data Dictionary</label>
 </view>

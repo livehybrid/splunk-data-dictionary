@@ -1,4 +1,4 @@
 <?xml version="1.0"?>
-<view template="data_dictionary:/templates/mcp_tools.html" type="html">
+<view template="data_dictionary_for_splunk:/templates/mcp_tools.html" type="html">
 	<label>AI and MCP tools</label>
 </view>

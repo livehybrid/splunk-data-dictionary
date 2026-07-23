@@ -15,7 +15,7 @@ services:
     volumes:
       # Mount the built app (stage/) live so `npm run build` on the host updates
       # the running container.
-      - ../stage:/opt/splunk/etc/apps/data_dictionary
+      - ../stage:/opt/splunk/etc/apps/data_dictionary_for_splunk
     healthcheck:
       test: ["CMD", "curl", "-fsk", "https://localhost:8089/services/server/info", "-u", "admin:Changeme1!"]
       interval: 10s
