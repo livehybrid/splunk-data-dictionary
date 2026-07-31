@@ -60,6 +60,16 @@ Splunk MCP Server's registry depends on the platform:
 `deploy/register_mcp_tools.py` remains as a manual one-shot equivalent for ad-hoc
 registration.
 
+### Tool naming
+
+The MCP Server prefixes tool names on load with `_meta.name_prefix` (defaulting to
+`_meta.external_app_id`) unless the name already starts with it, and `tools/call`
+resolves the tool by that same name. Each tool therefore declares
+`"name_prefix": "data_dictionary"`, which its name already carries - so the server
+advertises `data_dictionary_ping` rather than
+`data_dictionary_for_splunk_data_dictionary_ping`, and the name from `tools/list` is
+the name you call. See `docs/MCP-AUTOREGISTER.md`.
+
 ## Governance metadata
 
 Each result row carries the governance fields merged with **row → index →

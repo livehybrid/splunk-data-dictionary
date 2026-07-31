@@ -32,6 +32,32 @@ The handler reads `server/info` `instance_type`:
 It's idempotent (full-doc replace by `_key`) and runs under `passSystemAuth`, so it
 already has the system session key - nobody has to log in or run a script.
 
+## The tool name the server advertises is not always the one you registered
+
+The MCP Server prefixes every tool name on load (`Tool._convert_from_new_schema`):
+`_meta.name_prefix`, falling back to `_meta.external_app_id`, is prepended unless the
+name already starts with it. `tools/list` publishes that prefixed name. `tools/call`
+then looks the tool up by `_key` in `mcp_tools_enabled`.
+
+So if you enable under the bare `name`, the two disagree and **every call fails** with
+the name the server itself just advertised:
+
+```
+Tool 'data_dictionary_for_splunk_data_dictionary_ping' not found   (-32004)
+```
+
+Two halves to keeping them in sync, and this app does both:
+
+- Each tool carries `"name_prefix": "data_dictionary"` in `_meta`. Our names already
+  start with `data_dictionary_`, so the server uses them verbatim - short names, no
+  `data_dictionary_for_splunk_` stutter.
+- `autoregister.py` (and `deploy/register_mcp_tools.py`) derive the enabled `_key` with
+  `mcp_name()`, which mirrors the server's rule, so the key is right even if a future
+  tool name doesn't match the prefix.
+
+`tests/test_tool_signatures.py::test_advertised_name_matches_registered_name` fails the
+build if the two ever drift apart again.
+
 ## Things that cost me time, so they don't cost it again
 
 - Use `http_post`, not `access_endpoints`. `access_endpoints` calls a `_reload()` method;

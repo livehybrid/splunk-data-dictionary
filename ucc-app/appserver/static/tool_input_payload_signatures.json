@@ -65,6 +65,7 @@
         }
       },
       "external_app_id": "data_dictionary_for_splunk",
+      "name_prefix": "data_dictionary",
       "required_app": "data_dictionary_for_splunk"
     }
   },
@@ -159,6 +160,7 @@
         }
       },
       "external_app_id": "data_dictionary_for_splunk",
+      "name_prefix": "data_dictionary",
       "required_app": "data_dictionary_for_splunk"
     }
   },
@@ -194,6 +196,7 @@
         "time_range": false
       },
       "external_app_id": "data_dictionary_for_splunk",
+      "name_prefix": "data_dictionary",
       "required_app": "data_dictionary_for_splunk"
     }
   }

@@ -63,10 +63,28 @@ def _tools():
         return json.load(fh)
 
 
+def _mcp_name(tool):
+    """The name the MCP Server advertises, and the mcp_tools_enabled _key it looks
+    the tool up by on tools/call. Mirrors Tool._convert_from_new_schema: `name` is
+    prefixed with `_meta.name_prefix` (default `_meta.external_app_id`) unless it
+    already carries that prefix. Enabling under the bare name instead makes
+    tools/call fail with -32004 for the very name tools/list advertised.
+    """
+    meta = tool.get("_meta") or {}
+    prefix = meta.get("name_prefix")
+    if not isinstance(prefix, str) or not prefix.strip():
+        prefix = meta.get("external_app_id") or ""
+    prefix = prefix.strip()
+    name = tool.get("name") or ""
+    if prefix and not name.startswith(prefix + "_"):
+        return f"{prefix}_{name}"
+    return name
+
+
 def register():
     for tool in _tools():
-        name = tool["name"]
-        tool_id = tool.get("tool_id") or f"data_dictionary_for_splunk:{name}"
+        name = _mcp_name(tool)
+        tool_id = tool.get("tool_id") or f"data_dictionary_for_splunk:{tool['name']}"
         doc = dict(tool)
         doc["_key"] = tool_id
         doc["tool_id"] = tool_id
@@ -85,8 +103,8 @@ def register():
 
 def remove():
     for tool in _tools():
-        name = tool["name"]
-        tool_id = tool.get("tool_id") or f"data_dictionary_for_splunk:{name}"
+        name = _mcp_name(tool)
+        tool_id = tool.get("tool_id") or f"data_dictionary_for_splunk:{tool['name']}"
         _req("DELETE", f"{BASE}/mcp_tools/{_enc(tool_id)}")
         _req("DELETE", f"{BASE}/mcp_tools_enabled/{_enc(name)}")
         print(f"  removed {name}")

@@ -106,6 +106,38 @@ def test_external_app_id_present():
         )
 
 
+def _advertised_name(tool: dict) -> str:
+    """The name the MCP Server publishes for a tool.
+
+    Mirrors Tool._convert_from_new_schema in the Splunk MCP Server: the stored
+    `name` is prefixed with `_meta.name_prefix` (falling back to
+    `_meta.external_app_id`) unless it already carries that prefix.
+    """
+    meta = tool.get("_meta", {})
+    prefix = (meta.get("name_prefix") or meta.get("external_app_id") or "").strip()
+    name = tool["name"]
+    if prefix and not name.startswith(f"{prefix}_"):
+        return f"{prefix}_{name}"
+    return name
+
+
+def test_advertised_name_matches_registered_name():
+    """tools/list advertises the prefixed name; tools/call looks the tool up by the
+    mcp_tools_enabled _key, which registration writes from `name`. If the two
+    diverge, every call fails -32004 for the exact name tools/list just handed the
+    client. Regression: without `_meta.name_prefix` the server advertised
+    'data_dictionary_for_splunk_data_dictionary_ping' while the enabled row was
+    keyed 'data_dictionary_ping'.
+    """
+    for copy_name, tool in _all_tools():
+        advertised = _advertised_name(tool)
+        assert advertised == tool["name"], (
+            f"[{copy_name}] {tool['name']}: MCP would advertise {advertised!r} but "
+            f"registration enables {tool['name']!r} - set _meta.name_prefix to a "
+            f"prefix the tool name already carries"
+        )
+
+
 def test_input_schema_is_flat_no_refs():
     for copy_name, tool in _all_tools():
         blob = json.dumps(tool.get("inputSchema", {}))
