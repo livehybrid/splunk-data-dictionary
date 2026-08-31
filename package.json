@@ -28,7 +28,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.23.0",
-    "@babel/preset-env": "^7.23.0",
+    "@babel/preset-env": "^8.0.2",
     "@babel/preset-react": "^7.22.0",
     "@playwright/test": "^1.60.0",
     "@splunk/webpack-configs": "^7.0.0",
