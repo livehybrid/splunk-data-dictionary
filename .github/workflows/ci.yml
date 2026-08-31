@@ -18,7 +18,7 @@ jobs:
     name: Python lint + unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
@@ -35,7 +35,7 @@ jobs:
     outputs:
       tarball: ${{ steps.pkg.outputs.tarball }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v5
         with:
           node-version: '20'
@@ -109,7 +109,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: node-build
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v5
         with:
           node-version: '20'
@@ -172,7 +172,7 @@ jobs:
     name: Third-party licenses
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v5
         with:
           node-version: '20'
