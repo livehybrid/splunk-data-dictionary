@@ -16,7 +16,7 @@
     "test:integration:full": "bash scripts/integration-test.sh"
   },
   "dependencies": {
-    "@splunk/react-icons": "^5.0.0",
+    "@splunk/react-icons": "^5.14.1",
     "@splunk/react-page": "^8.3.1",
     "@splunk/react-ui": "^5.0.0",
     "@splunk/splunk-utils": "^3.2.0",
