@@ -90,10 +90,9 @@ jobs:
     needs: node-build
     uses: livehybrid/deploy-splunk-app-action/.github/workflows/appinspect-cli.yml@main
     with:
-      # 'cloud' = the Splunk Cloud vetting tag group (the app passes it cleanly).
-      # 'future' is intentionally omitted: it flags the python.required=python3
-      # 10.2-deprecation notice (a future_failure, not a current failure).
-      tags: "cloud"
+      # Full estate tag set. Future-failures, if any, are waived with rationale
+      # in .appinspect.expect.yaml rather than by omitting the tag.
+      tags: "cloud,future,private_victoria"
     secrets:
       token: ${{ secrets.GITHUB_TOKEN }}
 
