@@ -76,7 +76,7 @@ jobs:
       - name: SLIM parity - manifest file references resolve in the tarball
         run: python3 scripts/verify_manifest_refs.py "${{ steps.pkg.outputs.tarball }}"
       - name: Upload package (consumed by the reusable AppInspect workflows as 'dist')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/*.tar.gz
@@ -163,7 +163,7 @@ jobs:
         run: bash scripts/splunk-docker.sh down
       - name: Upload integration Playwright report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: integration-playwright-report
           path: playwright-report/
@@ -189,7 +189,7 @@ jobs:
             echo "licenses/ is up to date."
           fi
       - name: Upload licenses
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: third-party-licenses
           path: licenses/
