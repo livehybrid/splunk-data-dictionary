@@ -44,6 +44,26 @@ wait_ready() {
     return 1
 }
 
+wait_provisioned() {
+    # The splunk/splunk image's own HEALTHCHECK only goes healthy once its
+    # ansible provisioning has finished. On 10.6.0 provisioning was still running
+    # (and splunkd re-initialising the KV store) after Web answered and the KV
+    # store had briefly reported ready, so the tests met 503 "KV Store is
+    # initializing". Wait for the container to say it is done.
+    echo "Waiting for $CONTAINER to report healthy (provisioning done, up to ~10 min)..."
+    for i in $(seq 1 100); do
+        state=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$CONTAINER" 2>/dev/null || echo missing)
+        case "$state" in
+            healthy) echo "Container healthy after ~$((i * 6))s."; return 0 ;;
+            none) echo "Image has no HEALTHCHECK; relying on the Web and KV waits."; return 0 ;;
+        esac
+        sleep 6
+    done
+    echo "ERROR: $CONTAINER never reported healthy (last state: $state)." >&2
+    docker logs --tail 80 "$CONTAINER" >&2 || true
+    return 1
+}
+
 wait_kvstore() {
     # Splunk Web answering does NOT mean the KV store is up — mongod inits after
     # splunkd and the app's KV-backed endpoints 503 ("KV Store is initializing")
@@ -79,10 +99,12 @@ case "${1:-}" in
             -v "$ROOT/stage:/opt/splunk/etc/apps/data_dictionary_for_splunk" \
             "$SPLUNK_IMAGE" >/dev/null
         wait_ready
+        wait_provisioned
         wait_kvstore
         ;;
     wait)
         wait_ready
+        wait_provisioned
         wait_kvstore
         ;;
     logs)

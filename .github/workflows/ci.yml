@@ -109,9 +109,15 @@ jobs:
       splunkbase_password: ${{ secrets.SPLUNKBASE_PASSWORD }}
 
   integration:
-    name: Integration (live Splunk in Docker)
+    name: Integration (live Splunk ${{ matrix.splunk }} in Docker)
     runs-on: ubuntu-latest
     needs: node-build
+    strategy:
+      fail-fast: false
+      matrix:
+        # 10.0 is the oldest Splunk this app is tested on; 10.6.0 is current
+        # (Postgres-backed KV store, Python 3.13 alongside 3.9).
+        splunk: ["10.0", "10.6.0"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -128,7 +134,7 @@ jobs:
         run: npm run build
       - name: Start Splunk + install app (Docker)
         env:
-          SPLUNK_IMAGE: splunk/splunk:10.0
+          SPLUNK_IMAGE: splunk/splunk:${{ matrix.splunk }}
           SPLUNK_PASSWORD: Changeme1!
           WEB_PORT: '8000'
           MGMT_PORT: '8089'
@@ -169,7 +175,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: integration-playwright-report
+          name: integration-playwright-report-${{ matrix.splunk }}
           path: playwright-report/
 
   licenses:
