@@ -54,7 +54,8 @@ jobs:
         run: npm run typecheck
       - name: Derive app version from release tag
         if: startsWith(github.ref, 'refs/tags/v')
-        run: echo "APP_VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_ENV"
+        # Release versions carry the commit: 1.1.4+<short sha>.
+        run: echo "APP_VERSION=${GITHUB_REF#refs/tags/v}+$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
       - name: Build (ucc-gen + webpack -> stage/)
         run: npm run build
       - name: Verify build output
@@ -73,6 +74,30 @@ jobs:
           node scripts/package.js
           TARBALL=$(ls dist/*.tar.gz | head -1)
           echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+      - name: Verify release version in the package
+        # Tag builds only. Reads the tarball; the expected version comes from the
+        # ref and git, not from APP_VERSION.
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          export WANT_VERSION="${GITHUB_REF#refs/tags/v}+$(git rev-parse --short HEAD)"
+          python3 - "${{ steps.pkg.outputs.tarball }}" <<'PY'
+          import configparser, json, os, sys, tarfile
+          want = os.environ["WANT_VERSION"]
+          app = "data_dictionary_for_splunk"
+          with tarfile.open(sys.argv[1]) as tar:
+              raw = tar.extractfile(app + "/default/app.conf").read().decode()
+              manifest = json.load(tar.extractfile(app + "/app.manifest"))
+          conf = configparser.ConfigParser(interpolation=None, strict=False)
+          conf.read_string(raw)
+          got = {"launcher.version": conf.get("launcher", "version", fallback=None),
+                 "id.version": conf.get("id", "version", fallback=None),
+                 "app.manifest": manifest["info"]["id"]["version"],
+                 "tarball": os.path.basename(sys.argv[1])}
+          print(got)
+          bad = [k for k, v in got.items() if v != (app + "-" + want + ".tar.gz" if k == "tarball" else want)]
+          if bad:
+              sys.exit(f"package metadata is wrong for {want}: {bad}")
+          PY
       # Splunkbase runs SLIM on upload, which resolves every file reference in
       # app.manifest — no AppInspect tag group does, so without this gate a
       # manifest pointing at an unshipped file sails through CI and dies on
