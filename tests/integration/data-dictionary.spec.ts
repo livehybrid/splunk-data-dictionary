@@ -9,7 +9,7 @@
  * Assertions target UI that renders even with an empty catalog, so the suite is
  * deterministic on a freshly-booted Splunk.
  */
-import { test, expect } from './fixtures/splunk-auth';
+import { test, expect, login } from './fixtures/splunk-auth';
 
 test.describe('Data Dictionary home page', () => {
     test('loads and shows the Data Dictionary heading', async ({ app }) => {
@@ -60,6 +60,11 @@ test.describe('MCP tools page', () => {
                 waitUntil: 'domcontentloaded',
                 timeout: 30000,
             });
+        }
+        // If the session did not stick, Splunk shows the login form here instead.
+        if (/account\/login/.test(page.url()) || (await page.locator('input[name="username"]').isVisible().catch(() => false))) {
+            await login(page);
+            await page.goto('/app/data_dictionary_for_splunk/mcp_tools', { waitUntil: 'domcontentloaded', timeout: 30000 });
         }
         await page.waitForLoadState('networkidle').catch(() => {});
         await page.waitForTimeout(2000);

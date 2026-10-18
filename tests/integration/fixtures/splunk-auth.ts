@@ -17,7 +17,12 @@ type Fixtures = {
     app: Page | FrameLocator;
 };
 
-async function login(page: Page, user = SPLUNK_USER, pw = SPLUNK_PASSWORD) {
+export async function login(page: Page, user = SPLUNK_USER, pw = SPLUNK_PASSWORD) {
+    // Splunk redirects an unauthenticated view to the login page client-side, so
+    // checking straight after navigation can see the app URL and skip the login
+    // (10.6 CI, 2026-10-18: the next view landed on the login form). Let the page
+    // settle before deciding.
+    await page.waitForLoadState('networkidle').catch(() => {});
     const url = page.url();
     const loginVisible =
         /login|account|sso/i.test(url) ||
@@ -39,7 +44,10 @@ async function login(page: Page, user = SPLUNK_USER, pw = SPLUNK_PASSWORD) {
     await username.first().fill(user);
     await password.first().fill(pw);
     await page.getByRole('button', { name: /sign in|log in|login/i }).first().click();
-    await page.waitForURL(/\/app\/|launcher|home|data_dictionary/, { timeout: 30000 });
+    // Match on the PATH: the login page's own URL carries
+    // ?return_to=/app/data_dictionary_for_splunk/..., so a whole-URL regex for
+    // /app/ matched before sign-in had finished and the next view hit the login form.
+    await page.waitForURL((u) => !/\/account\/login/.test(u.pathname), { timeout: 30000 });
 }
 
 /** The React root - the page, or the first iframe if Splunk wraps the view. */
