@@ -64,6 +64,25 @@ wait_provisioned() {
     return 1
 }
 
+wait_app_kv() {
+    # On 10.6.0 /services/kvstore/status said "ready" and the app's own KV reads
+    # still got 503 "KV Store is initializing" ten seconds later (2026-10-18). So
+    # wait on what the tests actually do: read this app's collection, and require
+    # three 200s in a row, since the store has been seen to flap back.
+    local url="https://127.0.0.1:${MGMT_PORT}/servicesNS/nobody/data_dictionary_for_splunk/storage/collections/data/metadata?output_mode=json&limit=1"
+    echo "Waiting for the app's KV collection to serve reads (up to ~5 min)..."
+    local ok=0 code
+    for i in $(seq 1 60); do
+        code=$(curl -sk -o /dev/null -w '%{http_code}' -u "admin:${SPLUNK_PASSWORD}" "$url" || true)
+        if [ "$code" = 200 ]; then ok=$((ok + 1)); else ok=0; fi
+        if [ "$ok" -ge 3 ]; then echo "App KV collection served 3 reads in a row after ~$((i * 5))s."; return 0; fi
+        sleep 5
+    done
+    echo "ERROR: the app's KV collection never served 3 reads in a row (last HTTP $code)." >&2
+    docker logs --tail 80 "$CONTAINER" >&2 || true
+    return 1
+}
+
 wait_kvstore() {
     # Splunk Web answering does NOT mean the KV store is up — mongod inits after
     # splunkd and the app's KV-backed endpoints 503 ("KV Store is initializing")
@@ -101,11 +120,13 @@ case "${1:-}" in
         wait_ready
         wait_provisioned
         wait_kvstore
+        wait_app_kv
         ;;
     wait)
         wait_ready
         wait_provisioned
         wait_kvstore
+        wait_app_kv
         ;;
     logs)
         docker logs --tail "${2:-120}" "$CONTAINER" || true
