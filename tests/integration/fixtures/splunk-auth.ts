@@ -44,7 +44,10 @@ export async function login(page: Page, user = SPLUNK_USER, pw = SPLUNK_PASSWORD
     await username.first().fill(user);
     await password.first().fill(pw);
     await page.getByRole('button', { name: /sign in|log in|login/i }).first().click();
-    await page.waitForURL(/\/app\/|launcher|home|data_dictionary/, { timeout: 30000 });
+    // Match on the PATH: the login page's own URL carries
+    // ?return_to=/app/data_dictionary_for_splunk/..., so a whole-URL regex for
+    // /app/ matched before sign-in had finished and the next view hit the login form.
+    await page.waitForURL((u) => !/\/account\/login/.test(u.pathname), { timeout: 30000 });
 }
 
 /** The React root - the page, or the first iframe if Splunk wraps the view. */
