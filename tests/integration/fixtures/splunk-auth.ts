@@ -17,7 +17,12 @@ type Fixtures = {
     app: Page | FrameLocator;
 };
 
-async function login(page: Page, user = SPLUNK_USER, pw = SPLUNK_PASSWORD) {
+export async function login(page: Page, user = SPLUNK_USER, pw = SPLUNK_PASSWORD) {
+    // Splunk redirects an unauthenticated view to the login page client-side, so
+    // checking straight after navigation can see the app URL and skip the login
+    // (10.6 CI, 2026-10-18: the next view landed on the login form). Let the page
+    // settle before deciding.
+    await page.waitForLoadState('networkidle').catch(() => {});
     const url = page.url();
     const loginVisible =
         /login|account|sso/i.test(url) ||
