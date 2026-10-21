@@ -6,6 +6,15 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    ignore:
+      # @splunk/react-ui 5.x peers are react <=18 and styled-components
+      # ^5.3.10. Lift these when react-ui supports the new majors.
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "styled-components"
+        update-types: ["version-update:semver-major"]
 
   # GitHub Actions used by CI
   - package-ecosystem: "github-actions"

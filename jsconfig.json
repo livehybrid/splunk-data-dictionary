@@ -2,14 +2,13 @@
     "compilerOptions": {
         "target": "es2020",
         "module": "esnext",
-        "moduleResolution": "node",
+        "moduleResolution": "bundler",
         "jsx": "react",
         "allowJs": true,
         "checkJs": false,
         "noEmit": true,
         "esModuleInterop": true,
-        "skipLibCheck": true,
-        "baseUrl": "."
+        "skipLibCheck": true
     },
     "include": ["src/**/*"],
     "exclude": ["node_modules", "stage", "build", "dist"]
