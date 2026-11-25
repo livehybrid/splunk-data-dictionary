@@ -251,3 +251,19 @@ jobs:
     permissions:
       contents: write
     uses: livehybrid/deploy-splunk-app-action/.github/workflows/publish.yml@main
+
+  # Tag runs only: after the GitHub release and Splunk's hosted AppInspect,
+  # upload to Splunkbase 9255. Off unless the repo variable
+  # SPLUNKBASE_PUBLISH_ENABLED=true. Versions claimed: 10.0 and 10.6 are tested
+  # in CI, the releases between share their runtimes.
+  publish-splunkbase:
+    needs: [publish, quality-appinspect-api]
+    permissions:
+      contents: read
+    uses: livehybrid/deploy-splunk-app-action/.github/workflows/publish-splunkbase.yml@main
+    with:
+      app_id: "9255"
+      splunk_versions: "10.6,10.5,10.4,10.3,10.2,10.1,10.0"
+    secrets:
+      splunkbase_username: ${{ secrets.SPLUNKBASE_USERNAME }}
+      splunkbase_password: ${{ secrets.SPLUNKBASE_PASSWORD }}
