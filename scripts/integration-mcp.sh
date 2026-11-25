@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # Install + configure the Splunk MCP Server in a running integration container,
-# then register the Data Dictionary's MCP tools into it.
+# and mint an MCP token for the live MCP tests.
 #
 #   scripts/integration-mcp.sh
 #
 # The MCP Server app is third-party (Splunkbase) so it is NOT committed. Supply it
-# as a tarball via MCP_SERVER_TARBALL (default vendor/Splunk_MCP_Server.tgz). If the
-# tarball is absent the script prints SKIP and exits 0 — the rest of the harness
-# (app install, REST, RBAC, custom-field tests) still runs without it.
+# as a tarball via MCP_SERVER_TARBALL (default vendor/Splunk_MCP_Server.tgz); CI
+# downloads it with scripts/fetch-splunkbase-app.py. If the tarball is absent the
+# script prints SKIP and exits 0, unless MCP_REQUIRED=1 (CI), where it fails.
 #
-# On success it writes an mcp-audience admin token to MCP_TOKEN_FILE so the live
-# MCP tests can call the server.
+# The Data Dictionary's tools are NOT registered here: tests/test_mcp_server_live.py
+# calls the app's own registration endpoint, so the code that ships is what is
+# tested (deploy/register_mcp_tools.py remains for manual use).
+#
+# On success it writes an MCP token for admin to MCP_TOKEN_FILE (never printed).
 #
 # Env:
 #   CONTAINER         container name           (default dd_integration_splunk)
@@ -18,6 +21,7 @@
 #   SPLUNK_PASSWORD   admin password           (default Changeme1!)
 #   MCP_SERVER_TARBALL  path to the app tgz    (default vendor/Splunk_MCP_Server.tgz)
 #   MCP_TOKEN_FILE    where to write the token (default .tmp/integration-mcp-token)
+#   MCP_REQUIRED      1 = a missing tarball or token is an error, not a skip
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -32,6 +36,10 @@ MGMT="https://127.0.0.1:${MGMT_PORT}"
 say() { echo "[integration-mcp] $*"; }
 
 if [ ! -f "$TARBALL" ]; then
+    if [ "${MCP_REQUIRED:-}" = 1 ]; then
+        say "ERROR: MCP_REQUIRED=1 and no MCP Server tarball at $TARBALL."
+        exit 1
+    fi
     say "SKIP: no MCP Server tarball at $TARBALL (set MCP_SERVER_TARBALL to enable MCP tests)."
     exit 0
 fi
@@ -72,20 +80,38 @@ say "Verifying MCP Server endpoint is registered ..."
 mcp_ok=$(curl -sk -o /dev/null -w '%{http_code}' -u "admin:$PW" "$MGMT/services/mcp" || true)
 say "  /services/mcp -> HTTP $mcp_ok (401/405/200 = present)"
 
-say "Registering Data Dictionary tools into the MCP Server ..."
-SPLUNK_HOST=127.0.0.1 SPLUNK_PORT="$MGMT_PORT" SPLUNK_PASSWORD="$PW" \
-    python3 "$ROOT/deploy/register_mcp_tools.py"
-
-say "Minting an mcp-audience admin token ..."
+say "Minting an MCP token for admin ..."
 mkdir -p "$(dirname "$MCP_TOKEN_FILE")"
-token=$(curl -sk -u "admin:$PW" -X POST "$MGMT/services/authorization/tokens?output_mode=json" \
-    -d name=admin -d audience=mcp \
-    | python3 -c "import sys,json; e=json.load(sys.stdin).get('entry') or []; print(e[0]['content'].get('token','') if e else '')")
+rm -f "$MCP_TOKEN_FILE"
+# MCP Server 2.x: encrypted tokens, signed with a key pair the admin creates once
+# (201 created, 409 already there). 1.x: GET /services/mcp_token?username=.
+# Generic Splunk JWTs are rejected ("Invalid token audience"). The token is only
+# ever written to the file, never echoed.
+kp=$(curl -sk -o /dev/null -w '%{http_code}' -u "admin:$PW" -X POST "$MGMT/services/mcp_token/key-pair" || true)
+say "  key-pair HTTP $kp (201 created, 409 exists, 404 = 1.x server)"
+# Prints the token field, or nothing; the error message (never a token) goes to stderr.
+extract='import sys,json
+try:
+    d=json.load(sys.stdin)
+except ValueError:
+    sys.exit(0)
+d=d if isinstance(d,dict) else {}
+if d.get("token"):
+    print(d["token"])
+else:
+    print("[integration-mcp]   no token: " + str(d.get("message") or d.get("error") or d)[:300], file=sys.stderr)'
+token=$(curl -sk -u "admin:$PW" -X POST "$MGMT/services/mcp_token/tokens?output_mode=json" -d username=admin | python3 -c "$extract")
+if [ -z "$token" ]; then
+    token=$(curl -sk -u "admin:$PW" "$MGMT/services/mcp_token?username=admin&output_mode=json" | python3 -c "$extract")
+fi
 if [ -n "$token" ]; then
-    printf '%s' "$token" > "$MCP_TOKEN_FILE"
+    (umask 077; printf '%s' "$token" > "$MCP_TOKEN_FILE")
     say "Token written to $MCP_TOKEN_FILE (len ${#token})."
+elif [ "${MCP_REQUIRED:-}" = 1 ]; then
+    say "ERROR: could not mint an MCP token."
+    exit 1
 else
-    say "WARNING: could not mint an mcp token; live MCP-protocol tests will skip."
+    say "WARNING: could not mint an MCP token; live MCP-protocol tests will skip."
 fi
 
 say "MCP Server setup complete."

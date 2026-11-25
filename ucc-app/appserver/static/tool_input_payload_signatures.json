@@ -191,7 +191,7 @@
       ],
       "execution": {
         "type": "spl",
-        "template": "| inputlookup data_dictionary_catalog | stats count AS catalog_rows | eval ok=\"true\", app=\"data_dictionary\" | fields ok app catalog_rows",
+        "template": "| inputlookup data_dictionary_catalog | stats count AS catalog_rows | eval ok=\"true\", app=\"data_dictionary_for_splunk\" | fields ok app catalog_rows",
         "row_limiter": false,
         "time_range": false
       },
