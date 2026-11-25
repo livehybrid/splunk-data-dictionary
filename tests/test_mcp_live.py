@@ -1,22 +1,20 @@
 """
 Live integration tests against a running Splunk with the Data Dictionary app
-installed (and, optionally, the Splunk MCP Server). Stdlib-only (urllib) so it
-runs in the same pytest env as the unit tests - no `requests` dependency.
+installed: REST handlers and RBAC. The MCP-protocol tests are in
+test_mcp_server_live.py (they need the Splunk MCP Server, see the CI `mcp` job).
+Stdlib-only (urllib) so it runs in the same pytest env as the unit tests,
+with no `requests` dependency.
 
 Gating (all auto-skip when the env is absent, so unit-only CI stays green):
   * SPLUNK_MGMT_URL (e.g. https://127.0.0.1:8089) + SPLUNK_PASSWORD
         -> REST handler + RBAC tests run.
-  * SPLUNK_MCP_URL  (e.g. https://127.0.0.1:8089/services/mcp)
-    + SPLUNK_MCP_TOKEN or MCP_TOKEN_FILE (an mcp-audience JWT)
-        -> the MCP-protocol tests run too.
 
 What it proves:
   * the persistent REST handlers are live (ping, flat query shape);
   * RBAC: a user WITHOUT edit_data_dictionary is 403 on every write but 200 on
     reads; a user WITH it (via a role) is 200 on writes;
   * (best effort, if the catalog has rows) a custom field flows through to the
-    flat query output;
-  * the MCP tools answer through the real MCP Server (ping/query).
+    flat query output.
 
 The test creates its own throwaway role + users + field/metadata and removes them
 in teardown, so it is self-contained and leaves no residue.
@@ -36,7 +34,6 @@ import pytest
 MGMT = (os.environ.get("SPLUNK_MGMT_URL") or "").rstrip("/")
 PW = os.environ.get("SPLUNK_PASSWORD") or ""
 ADMIN_USER = os.environ.get("SPLUNK_USER") or "admin"
-MCP_URL = (os.environ.get("SPLUNK_MCP_URL") or "").rstrip("/")
 
 EDIT_ROLE = "dd_it_editor"
 EDITOR_USER = "dd_it_editor_user"
@@ -191,85 +188,6 @@ def test_custom_field_flows_through(rbac_env):
     assert status == 200 and rows
     assert any(r.get(CUSTOM_FIELD) == "Hot" for r in rows), \
         f"custom field {CUSTOM_FIELD} should flow through to the flat query rows"
-
-
-# --------------------------------------------------------------------------- #
-# MCP protocol (only when an mcp-audience token is available)
-# --------------------------------------------------------------------------- #
-def _mcp_token():
-    tok = os.environ.get("SPLUNK_MCP_TOKEN")
-    if tok:
-        return tok.strip()
-    path = os.environ.get("MCP_TOKEN_FILE")
-    if path and os.path.exists(path):
-        with open(path) as fh:
-            return fh.read().strip()
-    return ""
-
-
-mcp_gate = pytest.mark.skipif(
-    not (MCP_URL and _mcp_token()),
-    reason="SPLUNK_MCP_URL + token (SPLUNK_MCP_TOKEN / MCP_TOKEN_FILE) not set",
-)
-
-
-def _mcp_call(name, arguments, attempts=3):
-    payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-               "params": {"name": name, "arguments": arguments}}
-    body = json.dumps(payload).encode()
-    # On a freshly-restarted Splunk the first SPL-backed tool call (ping dispatches
-    # a search job) can exceed the read timeout while the search subsystem warms up.
-    # Retry on timeout: the first attempt warms it, a later attempt then succeeds.
-    raw = None
-    for attempt in range(attempts):
-        r = urllib.request.Request(MCP_URL, data=body, method="POST", headers={
-            "Authorization": "Bearer " + _mcp_token(),
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream",
-        })
-        try:
-            with urllib.request.urlopen(r, context=CTX, timeout=90) as resp:
-                raw = resp.read().decode("utf-8", "replace")
-            break
-        except (TimeoutError, urllib.error.URLError) as exc:
-            is_timeout = isinstance(exc, TimeoutError) or isinstance(
-                getattr(exc, "reason", None), (TimeoutError, OSError))
-            if not is_timeout or attempt == attempts - 1:
-                raise
-            time.sleep(5)
-    for line in raw.splitlines():
-        line = line[6:] if line.startswith("data: ") else line
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            doc = json.loads(line)
-        except ValueError:
-            continue
-        if "result" in doc or "error" in doc:
-            return doc
-    raise AssertionError(f"no JSON-RPC result in MCP response: {raw[:300]}")
-
-
-def _mcp_rows(doc):
-    assert "error" not in doc, doc["error"]
-    content = doc["result"]["content"][0]["text"]
-    inner = json.loads(content)
-    return inner.get("results", inner if isinstance(inner, list) else [])
-
-
-@mcp_gate
-def test_mcp_ping():
-    rows = _mcp_rows(_mcp_call("data_dictionary_ping", {}))
-    assert rows and rows[0].get("app") == "data_dictionary_for_splunk"
-
-
-@mcp_gate
-def test_mcp_query_returns_rows():
-    doc = _mcp_call("data_dictionary_query", {"limit": 5})
-    assert "error" not in doc, doc.get("error")
-    rows = _mcp_rows(doc)
-    assert isinstance(rows, list)
 
 
 if __name__ == "__main__":
