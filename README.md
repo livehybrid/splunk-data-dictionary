@@ -63,7 +63,7 @@ npm run package        # -> dist/data_dictionary_for_splunk-1.1.3.tar.gz
 # 2. Tests (no live Splunk required)
 pip install pytest ruff
 ruff check tests ucc-app/bin
-pytest tests           # tool-signature invariants; live MCP tests auto-skip
+pytest tests           # tool-signature invariants; live MCP tests skip without an MCP Server
 
 # 3. AppInspect (precert) on the package
 pip install splunk-appinspect==4.2.1
@@ -86,8 +86,10 @@ fields included). See `docs/MCP-TOOLS.md` for full schemas + real captured outpu
 | `data_dictionary_query` | **Search across all** indexes/sourcetypes by keyword to find data and its owners/PII/classification (e.g. "who owns the cultivar data?"). |
 | `data_dictionary_ping` | Health check + catalog row count. |
 
-Registration: `appserver/static/tool_input_payload_signatures.json` is the single source of truth; `deploy/register_mcp_tools.py` writes each tool (full-doc replace)
-into the Splunk MCP Server's `mcp_tools` + `mcp_tools_enabled` KV collections.
+Registration: `appserver/static/tool_input_payload_signatures.json` is the single source of truth. On Splunk Cloud the MCP Server picks the tools up itself; on
+Enterprise the app registers them on install through `bin/autoregister.py` (`[triggers] reload.tools` in `app.conf`), writing each tool into the MCP Server's
+`mcp_tools` + `mcp_tools_enabled` KV collections. See [`docs/MCP-AUTOREGISTER.md`](./docs/MCP-AUTOREGISTER.md). `deploy/register_mcp_tools.py` remains as a
+manual one-shot.
 
 ## Repository layout
 
@@ -143,10 +145,10 @@ npm run test:integration:full   # build -> Splunk in Docker -> install/configure
                                 # MCP Server + register tools -> live pytest + Playwright
 ```
 
-This boots Splunk, installs the app, and - when you supply the (third-party)
-Splunk MCP Server as `vendor/Splunk_MCP_Server.tgz` - installs/configures it and
-registers the tools, then runs the live REST/RBAC/MCP pytest and the Playwright
-UI suite (rendering, RBAC, custom fields). See
+This boots Splunk, installs the app, and - when `vendor/Splunk_MCP_Server.tgz` is
+present (CI downloads it from Splunkbase, app 7931; locally, download it yourself) -
+installs/configures it and registers the tools, then runs the live REST/RBAC/MCP
+pytest and the Playwright UI suite (rendering, RBAC, custom fields). See
 [`docs/INTEGRATION-TESTING.md`](./docs/INTEGRATION-TESTING.md).
 
 ## Built & validated by GitHub Actions
@@ -158,11 +160,12 @@ the build uses Splunk's official **UCC** (`ucc-gen`).
 
 | Job | What it does |
 | --- | --- |
-| **python** | `ruff` + `pytest` (tool-signature invariants; live MCP tests auto-skip). |
+| **python** | `ruff` + `pytest` (tool-signature invariants; live MCP tests skip here, they run in **mcp**). |
 | **node-build** | `ucc-gen` + Webpack build + package; uploads the tarball as the `dist` artifact. |
 | **quality-appinspect** | AppInspect **CLI** via the reusable pipeline → Splunk's official action (`cloud` tag). |
 | **quality-appinspect-api** | AppInspect **API** (cloud vetting) via the reusable pipeline → Splunk's official action. |
 | **integration** | Boots Splunk 10 in Docker, installs the built app, runs Playwright against the **real** REST handlers + React bundles, tears down. |
+| **mcp** | On Splunk 10.0 and 10.6.0: downloads the Splunk MCP Server (Splunkbase 7931, pinned 2.1.0, bump deliberately) with the repo's Splunkbase credentials, installs it, registers the tools via the app's autoregister endpoint and calls all three through MCP (`MCP_REQUIRED=1`, so a missing server fails rather than skips). Skipped for Dependabot and fork PRs, which get no secrets. Releases require it. |
 | **licenses** | Regenerates third-party license attribution (`npm run licenses`) and uploads it. |
 | **publish** | On a `v*.*.*` tag: publishes a GitHub Release with the (tag-versioned) tarball, via the reusable `publish.yml`. |
 
